@@ -7,8 +7,12 @@ export type Token = {
   decimals: number;
   /** Native gas token (no ERC-20 address; balanceOf via getBalance). */
   native?: boolean;
-  /** Self-hosted token icon under /public/tokens (real logos; COWL = the mask). */
+  /** Self-hosted token icon under /public/tokens, or the explorer's icon for listed tokens. */
   logoURI?: string;
+  /** Holder count from the explorer, for tokens that came off the live list. */
+  holders?: number;
+  /** USD price from the explorer, for tokens that came off the live list. */
+  priceUsd?: number;
 };
 
 const net = activeNetwork();

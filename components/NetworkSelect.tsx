@@ -1,19 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { NETWORKS } from "@/lib/networks";
+import { activeNetwork, DEFAULT_NETWORK, setActiveNetwork } from "@/lib/networks";
 
-// Mainnet isn't live for Cowl yet — only the testnet pool is deployed, so it's the
-// single selectable option and mainnet is shown disabled until the pool ships there.
+// Both networks are live: the testnet pool since Feb 2026 and the mainnet pool
+// since Jul 24 2026. The choice persists per browser and a reload re-derives
+// every module (RPC, addresses, token list) from it.
 const OPTIONS = [
-  { key: "robinhood-testnet", name: "Robinhood Chain", tag: "Testnet", live: true },
-  { key: "robinhood-mainnet", name: "Robinhood Chain", tag: "Mainnet", live: false },
+  { key: "robinhood-mainnet", name: "Robinhood Chain", tag: "Mainnet" },
+  { key: "robinhood-testnet", name: "Robinhood Chain", tag: "Testnet" },
 ];
 
 export default function NetworkSelect() {
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState("robinhood-testnet");
+  const [active, setActive] = useState(DEFAULT_NETWORK);
   const ref = useRef<HTMLDivElement>(null);
+
+  // Read the stored choice after mount so server and first client render agree.
+  useEffect(() => {
+    setActive(activeNetwork().key);
+  }, []);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -38,34 +44,26 @@ export default function NetworkSelect() {
 
       {open && (
         <div className="absolute right-0 top-11 z-30 w-60 bg-card fade-up">
-          <p className="label-mono text-[0.6rem] text-faint px-4 pt-3 pb-2">Network</p>
+          <p className="label-soft text-faint px-4 pt-3 pb-2">Network</p>
           {OPTIONS.map((o) => {
             const selected = o.key === active;
             return (
               <button
                 key={o.key}
-                disabled={!o.live}
                 onClick={() => {
-                  if (!o.live) return;
-                  setActive(o.key);
                   setOpen(false);
+                  if (!selected) setActiveNetwork(o.key);
                 }}
-                className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
-                  o.live ? "hover:bg-ink3" : "opacity-45 cursor-not-allowed"
-                }`}
+                className="w-full flex items-center justify-between px-4 py-3 text-left transition-colors hover:bg-ink3"
               >
                 <span className="flex flex-col">
                   <span className="label-mono text-[0.72rem] text-bone">{o.tag}</span>
                   <span className="text-[0.68rem] text-faint">{o.name}</span>
                 </span>
-                {o.live ? (
-                  selected ? (
-                    <span className="label-mono text-[0.58rem] text-acid">Live</span>
-                  ) : (
-                    <span className="label-mono text-[0.58rem] text-muted">Select</span>
-                  )
+                {selected ? (
+                  <span className="label-soft text-acid">Active</span>
                 ) : (
-                  <span className="label-mono text-[0.58rem] text-faint bg-ink2 px-2 py-0.5">Soon</span>
+                  <span className="label-soft text-muted">Select</span>
                 )}
               </button>
             );

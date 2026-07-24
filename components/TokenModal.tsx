@@ -3,20 +3,22 @@
 import { useEffect, useState } from "react";
 import { getAddress, isAddress } from "viem";
 import { TOKENS, type Token } from "@/lib/tokens";
+import { fetchTokenList } from "@/lib/tokenList";
 import { fetchBalance, publicClient } from "@/lib/useWallet";
 
 // Real token icon (self-hosted under /public/tokens), with a graceful fall back to
 // the coloured initials glyph if the image is missing, failing, or the token is a
 // custom import with no hosted icon.
-function TokenGlyph({ symbol }: { symbol: string }) {
+function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
   const known = TOKENS.find((t) => t.symbol === symbol);
   const [errored, setErrored] = useState(false);
+  const logo = src ?? known?.logoURI;
 
-  if (known?.logoURI && !errored) {
+  if (logo && !errored) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={known.logoURI}
+        src={logo}
         alt={symbol}
         width={32}
         height={32}
@@ -95,6 +97,8 @@ type Props = {
 export default function TokenModal({ open, exclude, tokens, allowImport, owner, onClose, onSelect }: Props) {
   const [q, setQ] = useState("");
   const [imported, setImported] = useState<Token[]>([]);
+  const [listed, setListed] = useState<Token[]>([]);
+  const [listLoading, setListLoading] = useState(false);
   const [lookup, setLookup] = useState<Lookup>({ state: "idle" });
   const [balances, setBalances] = useState<Record<string, string>>({});
 
@@ -102,19 +106,41 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
     if (open && allowImport) setImported(loadImported());
   }, [open, allowImport]);
 
+  // The live chain list, explorer-sourced, joins the curated set when importing
+  // is on. Curated and imported entries win duplicates by address.
+  useEffect(() => {
+    if (!open || !allowImport) return;
+    let alive = true;
+    setListLoading(true);
+    fetchTokenList().then((l) => {
+      if (!alive) return;
+      setListed(l);
+      setListLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open, allowImport]);
+
   const base = tokens ?? TOKENS;
-  const known = [
+  const pinned = [
     ...base,
     ...imported.filter((i) => !base.some((b) => b.address.toLowerCase() === i.address.toLowerCase())),
   ];
+  const known = [
+    ...pinned,
+    ...listed.filter((l) => !pinned.some((p) => p.address.toLowerCase() === l.address.toLowerCase())),
+  ];
 
+  // Balances load for the pinned set only; the live list would be hundreds of
+  // calls, and its rows carry holder counts instead.
   useEffect(() => {
     if (!open || !owner) {
       setBalances({});
       return;
     }
     let alive = true;
-    Promise.all(known.map(async (t) => [t.symbol, await fetchBalance(owner, t)] as const)).then(
+    Promise.all(pinned.map(async (t) => [t.address, await fetchBalance(owner, t)] as const)).then(
       (rows) => {
         if (alive) setBalances(Object.fromEntries(rows));
       },
@@ -132,8 +158,8 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
       setLookup({ state: "idle" });
       return;
     }
-    const listed = [...base, ...imported].some((t) => t.address.toLowerCase() === addr.toLowerCase());
-    if (listed) {
+    const alreadyListed = known.some((t) => t.address.toLowerCase() === addr.toLowerCase());
+    if (alreadyListed) {
       setLookup({ state: "idle" });
       return;
     }
@@ -157,7 +183,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, allowImport, open, imported]);
+  }, [q, allowImport, open, imported, listed]);
 
   if (!open) return null;
 
@@ -170,7 +196,11 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
           t.name.toLowerCase().includes(needle) ||
           t.address.toLowerCase() === needle),
     )
-    .sort((a, b) => (parseFloat(balances[b.symbol] ?? "0") || 0) - (parseFloat(balances[a.symbol] ?? "0") || 0));
+    .sort(
+      (a, b) =>
+        (parseFloat(balances[b.address] ?? "0") || 0) - (parseFloat(balances[a.address] ?? "0") || 0) ||
+        (b.holders ?? 0) - (a.holders ?? 0),
+    );
 
   const importToken = (t: Token) => {
     const next = [...imported, t];
@@ -204,9 +234,10 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
             className="w-full bg-ink px-4 py-3 text-sm text-bone placeholder:text-faint font-data"
           />
         </div>
-        <div className="max-h-[40vh] overflow-y-auto pb-2">
+        <div className="max-h-[52vh] overflow-y-auto pb-2">
           {list.map((t) => {
-            const bal = parseFloat(balances[t.symbol] ?? "0") || 0;
+            const hasBal = balances[t.address] !== undefined;
+            const bal = parseFloat(balances[t.address] ?? "0") || 0;
             return (
               <button
                 key={`${t.symbol}-${t.address}`}
@@ -216,19 +247,27 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
                 }}
                 className="w-full flex items-center gap-3 px-5 py-3 hover:bg-ink3 transition-colors text-left"
               >
-                <TokenGlyph symbol={t.symbol} />
+                <TokenGlyph symbol={t.symbol} src={t.logoURI} />
                 <span className="flex flex-col flex-1 min-w-0">
                   <span className="text-sm text-bone">{t.symbol}</span>
                   <span className="text-xs text-faint truncate">{t.name}</span>
                 </span>
-                {owner && (
+                {owner && hasBal ? (
                   <span className="font-data text-sm text-muted shrink-0">
                     {bal === 0 ? "0" : bal.toLocaleString("en-US", { maximumFractionDigits: 4 })}
                   </span>
-                )}
+                ) : t.holders ? (
+                  <span className="font-data text-[0.68rem] text-faint shrink-0">
+                    {Intl.NumberFormat("en-US", { notation: "compact" }).format(t.holders)} holders
+                  </span>
+                ) : null}
               </button>
             );
           })}
+
+          {listLoading && allowImport && (
+            <p className="px-5 py-3 text-xs text-faint">Loading the token list…</p>
+          )}
 
           {lookup.state === "loading" && (
             <p className="px-5 py-4 text-xs text-faint">Reading token…</p>

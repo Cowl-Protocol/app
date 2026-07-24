@@ -73,8 +73,30 @@ export const NETWORKS: Record<string, NetworkDef> = {
 
 export const DEFAULT_NETWORK = "robinhood-testnet";
 
+const STORE_KEY = "cowl.network";
+
+/** The network the app runs against. Persisted per browser; testnet by default. */
 export function activeNetwork(): NetworkDef {
+  if (typeof window !== "undefined") {
+    try {
+      const key = window.localStorage.getItem(STORE_KEY);
+      if (key && NETWORKS[key]) return NETWORKS[key];
+    } catch {
+      /* storage blocked, fall through to the default */
+    }
+  }
   return NETWORKS[DEFAULT_NETWORK];
+}
+
+/** Switch networks and reload so every module re-derives from the new one. */
+export function setActiveNetwork(key: string) {
+  if (!NETWORKS[key]) return;
+  try {
+    window.localStorage.setItem(STORE_KEY, key);
+  } catch {
+    /* storage blocked, the reload just keeps the default */
+  }
+  window.location.reload();
 }
 
 /** Build a viem Chain object from a network definition. */

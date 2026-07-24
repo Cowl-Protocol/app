@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { createPublicClient, http, formatUnits } from "viem";
+import { createPublicClient, fallback, http, formatUnits } from "viem";
 import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { activeNetwork, toViemChain } from "./networks";
@@ -20,8 +20,13 @@ const ERC20_BALANCE_ABI = [
   },
 ] as const;
 
-/** Read-only client used for balances, independent of any wallet. */
-export const publicClient = createPublicClient({ chain, transport: http() });
+/** Read-only client used for balances, independent of any wallet. The network's
+ * fallback RPC actually engages here (a bare http() only ever uses the first
+ * url), which matters where the primary is geo-restricted. */
+export const publicClient = createPublicClient({
+  chain,
+  transport: fallback([http(net.rpcUrl), ...(net.rpcFallback ? [http(net.rpcFallback)] : [])]),
+});
 
 /** Balance of `owner` for a token (native or ERC-20), formatted. */
 export async function fetchBalance(owner: `0x${string}`, token: Token): Promise<string> {

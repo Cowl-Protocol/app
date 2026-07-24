@@ -85,7 +85,7 @@ export default function BoundaryConfirmModal({
         <div className="px-5">
           <div className="bg-ink2 p-4 flex items-center justify-between gap-3">
             <span className="flex items-center gap-2">
-              <TokenGlyph symbol={token.symbol} />
+              <TokenGlyph symbol={token.symbol} src={token.logoURI} />
               <span className="text-faint label-soft whitespace-nowrap">{fromLabel}</span>
             </span>
             <span className="font-data text-lg text-bone whitespace-nowrap">
@@ -95,7 +95,7 @@ export default function BoundaryConfirmModal({
           <div className="h-px" />
           <div className="bg-ink2 p-4 flex items-center justify-between mt-1 gap-3">
             <span className="flex items-center gap-2">
-              <TokenGlyph symbol={token.symbol} />
+              <TokenGlyph symbol={token.symbol} src={token.logoURI} />
               <span className="text-faint label-soft whitespace-nowrap">{toLabel}</span>
             </span>
             <span className="font-data text-lg text-acid whitespace-nowrap">

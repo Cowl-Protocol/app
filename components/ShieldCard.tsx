@@ -88,7 +88,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     setAmount("");
   };
 
-  const usd = amt * (USD[token.symbol] ?? 0);
+  // Listed tokens carry a live USD price off the explorer; the anchors cover the rest.
+  const usd = amt * (token.priceUsd ?? USD[token.symbol] ?? 0);
   const relay = wallet.network.defaultRelay;
 
   const publicSide = (
@@ -161,7 +162,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               onClick={() => setPicking(true)}
               className="shrink-0 flex items-center gap-2 bg-ink3 hover:bg-[#1c2027] pl-2 pr-3 py-2 transition-colors"
             >
-              <TokenGlyph symbol={token.symbol} />
+              <TokenGlyph symbol={token.symbol} src={token.logoURI} />
               <span className="label-mono text-[0.78rem] text-bone">{token.symbol}</span>
               <span className="text-faint text-xs">▾</span>
             </button>

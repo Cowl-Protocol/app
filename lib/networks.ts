@@ -58,7 +58,10 @@ export const NETWORKS: Record<string, NetworkDef> = {
     explorer: "https://robinhoodchain.blockscout.com",
     currency: { name: "Ether", symbol: "ETH", decimals: 18 },
     testnet: false,
-    contracts: {},
+    // Mainnet shielded pool, deployed 2026-07-24 (mirror of cli/src/networks.ts).
+    contracts: {
+      pool: "0x6f98666e9d05431dCd765AAa289a5E346AfA6a3E",
+    },
   },
 };
 

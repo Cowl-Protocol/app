@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback } from "react";
-import { createPublicClient, fallback, http, formatUnits } from "viem";
+import { createPublicClient, formatUnits } from "viem";
 import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { activeNetwork, toViemChain } from "./networks";
+import { transportFor } from "./transport";
 import type { Token } from "./tokens";
 
 const net = activeNetwork();
@@ -25,7 +26,10 @@ const ERC20_BALANCE_ABI = [
  * url), which matters where the primary is geo-restricted. */
 export const publicClient = createPublicClient({
   chain,
-  transport: fallback([http(net.rpcUrl), ...(net.rpcFallback ? [http(net.rpcFallback)] : [])]),
+  transport: transportFor(net),
+  // Concurrent contract reads collapse into a single multicall, so a page of
+  // balances costs one request rather than one per token.
+  batch: { multicall: { wait: 24 } },
 });
 
 /** Balance of `owner` for a token (native or ERC-20), formatted. */

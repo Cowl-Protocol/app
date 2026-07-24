@@ -100,6 +100,11 @@ export function setActiveNetwork(key: string) {
   window.location.reload();
 }
 
+/** Multicall3, at its canonical address on both Robinhood networks. Reads batch
+ * through it so a page of balances costs one request, which keeps the public
+ * endpoints comfortable. */
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
+
 /** Build a viem Chain object from a network definition. */
 export function toViemChain(net: NetworkDef): Chain {
   return defineChain({
@@ -110,6 +115,7 @@ export function toViemChain(net: NetworkDef): Chain {
       default: { http: [net.rpcUrl, ...(net.rpcFallback ? [net.rpcFallback] : [])] },
     },
     blockExplorers: { default: { name: net.label, url: net.explorer } },
+    contracts: { multicall3: { address: MULTICALL3 } },
     testnet: net.testnet,
   });
 }

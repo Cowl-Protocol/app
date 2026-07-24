@@ -6,8 +6,9 @@ import {
   rainbowWallet,
   coinbaseWallet,
 } from "@rainbow-me/rainbowkit/wallets";
-import { createConfig, fallback, http } from "wagmi";
-import { NETWORKS, toViemChain, type NetworkDef } from "./networks";
+import { createConfig } from "wagmi";
+import { NETWORKS, toViemChain } from "./networks";
+import { transportFor } from "./transport";
 
 // RainbowKit needs a WalletConnect Cloud projectId (free, cloud.reown.com) to enable
 // mobile / QR connections. Drop it into .env.local as NEXT_PUBLIC_WC_PROJECT_ID; a
@@ -29,12 +30,6 @@ const connectors = connectorsForWallets(
   ],
   { appName: "Cowl", projectId },
 );
-
-// Fallback transports so a geo-restricted primary RPC degrades to the explorer's
-// eth-rpc instead of failing outright.
-function transportFor(net: NetworkDef) {
-  return fallback([http(net.rpcUrl), ...(net.rpcFallback ? [http(net.rpcFallback)] : [])]);
-}
 
 export const wagmiConfig = createConfig({
   connectors,

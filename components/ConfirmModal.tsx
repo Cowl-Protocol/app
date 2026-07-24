@@ -61,7 +61,7 @@ export default function ConfirmModal({
           <div className="bg-ink2 p-4 flex items-center justify-between">
             <span className="flex items-center gap-2">
               <TokenGlyph symbol={pay.symbol} />
-              <span className="text-faint text-xs label-mono">You pay</span>
+              <span className="text-faint label-soft">You pay</span>
             </span>
             <span className="font-data text-lg text-bone">
               {amount} {pay.symbol}
@@ -71,7 +71,7 @@ export default function ConfirmModal({
           <div className="bg-ink2 p-4 flex items-center justify-between mt-1">
             <span className="flex items-center gap-2">
               <TokenGlyph symbol={receive.symbol} />
-              <span className="text-faint text-xs label-mono">You receive</span>
+              <span className="text-faint label-soft">You receive</span>
             </span>
             <span className="font-data text-lg text-acid">
               ≈ {out} {receive.symbol}
@@ -87,21 +87,21 @@ export default function ConfirmModal({
                 {i + 1}
               </span>
               <div>
-                <p className="label-mono text-[0.68rem] text-bone">{s.k}</p>
+                <p className="label-soft text-bone">{s.k}</p>
                 <p className="text-xs text-muted mt-0.5">{s.d}</p>
               </div>
             </div>
           ))}
           <div className="flex items-center justify-between text-xs pt-1">
-            <span className="text-faint font-mono">Min. received</span>
-            <span className="font-mono text-muted">
+            <span className="text-faint font-data">Min. received</span>
+            <span className="font-data text-muted">
               {minReceived} {receive.symbol}
             </span>
           </div>
           {relay && (
             <div className="flex items-center justify-between text-xs">
-              <span className="text-faint font-mono">Relayer</span>
-              <span className="font-mono text-acid">{relay.replace("https://", "")}</span>
+              <span className="text-faint font-data">Relayer</span>
+              <span className="font-data text-acid">{relay.replace("https://", "")}</span>
             </div>
           )}
         </div>
@@ -115,13 +115,13 @@ export default function ConfirmModal({
             </p>
             <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
               <code className="font-data text-[0.8rem] text-acid">{cliCmd}</code>
-              <button onClick={copy} className="label-mono text-[0.6rem] text-muted hover:text-bone shrink-0 ml-3">
+              <button onClick={copy} className="label-soft text-muted hover:text-bone shrink-0 ml-3">
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
             <a
               href="https://cowlprotocol.com/docs"
-              className="block mt-3 label-mono text-[0.6rem] text-faint hover:text-bone"
+              className="block mt-3 label-soft text-faint hover:text-bone"
             >
               Install the CLI → cowlprotocol.com/docs
             </a>

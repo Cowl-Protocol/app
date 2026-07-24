@@ -67,6 +67,17 @@ body {
   text-transform: uppercase;
 }
 
+/* Small structural label in the body face — Tronica gets chunky below ~0.7rem,
+ * so tiny labels track uppercase Geist instead and Tronica stays on the big
+ * structural moments (tabs, chips, action buttons). */
+.label-soft {
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .font-mono {
   font-family: var(--font-mono);
 }

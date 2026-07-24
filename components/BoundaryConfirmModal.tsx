@@ -68,8 +68,8 @@ export default function BoundaryConfirmModal({
   };
 
   const title = mode === "shield" ? "Review shield" : "Review unshield";
-  const fromLabel = mode === "shield" ? "From public wallet" : "From shielded balance";
-  const toLabel = mode === "shield" ? "To shielded balance" : "To public wallet";
+  const fromLabel = mode === "shield" ? "Public wallet" : "Shielded balance";
+  const toLabel = mode === "shield" ? "Shielded balance" : "Public wallet";
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4 bg-black/70" onClick={onClose}>
@@ -83,22 +83,22 @@ export default function BoundaryConfirmModal({
 
         {/* Amounts */}
         <div className="px-5">
-          <div className="bg-ink2 p-4 flex items-center justify-between">
+          <div className="bg-ink2 p-4 flex items-center justify-between gap-3">
             <span className="flex items-center gap-2">
               <TokenGlyph symbol={token.symbol} />
-              <span className="text-faint text-xs label-mono">{fromLabel}</span>
+              <span className="text-faint label-soft whitespace-nowrap">{fromLabel}</span>
             </span>
-            <span className="font-data text-lg text-bone">
+            <span className="font-data text-lg text-bone whitespace-nowrap">
               {amount} {token.symbol}
             </span>
           </div>
           <div className="h-px" />
-          <div className="bg-ink2 p-4 flex items-center justify-between mt-1">
+          <div className="bg-ink2 p-4 flex items-center justify-between mt-1 gap-3">
             <span className="flex items-center gap-2">
               <TokenGlyph symbol={token.symbol} />
-              <span className="text-faint text-xs label-mono">{toLabel}</span>
+              <span className="text-faint label-soft whitespace-nowrap">{toLabel}</span>
             </span>
-            <span className="font-data text-lg text-acid">
+            <span className="font-data text-lg text-acid whitespace-nowrap">
               {mode === "unshield" && relay ? "≈ " : ""}
               {amount} {token.symbol}
             </span>
@@ -113,7 +113,7 @@ export default function BoundaryConfirmModal({
                 {i + 1}
               </span>
               <div>
-                <p className="label-mono text-[0.68rem] text-bone">{s.k}</p>
+                <p className="label-soft text-bone">{s.k}</p>
                 <p className="text-xs text-muted mt-0.5">{s.d}</p>
               </div>
             </div>
@@ -121,39 +121,39 @@ export default function BoundaryConfirmModal({
 
           {planLabel && (
             <div className="flex items-center justify-between text-xs pt-1">
-              <span className="text-faint font-mono">Plan</span>
-              <span className="font-mono text-muted">
+              <span className="text-faint font-data">Plan</span>
+              <span className="font-data text-muted text-right">
                 {planLabel} · {txCount} {mode === "shield" ? (txCount === 1 ? "deposit" : "deposits") : txCount === 1 ? "withdrawal" : "withdrawals"}
               </span>
             </div>
           )}
           {exact && (
             <div className="flex items-center justify-between text-xs pt-1">
-              <span className="text-faint font-mono">Boundary</span>
-              <span className="font-mono text-muted">exact amount · 1 transaction</span>
+              <span className="text-faint font-data">Boundary</span>
+              <span className="font-data text-muted">exact amount · 1 transaction</span>
             </div>
           )}
           {remainderLabel && (
             <div className="flex items-center justify-between text-xs">
-              <span className="text-faint font-mono">Remainder</span>
-              <span className="font-mono text-muted">{remainderLabel}</span>
+              <span className="text-faint font-data">Remainder</span>
+              <span className="font-data text-muted text-right">{remainderLabel}</span>
             </div>
           )}
           {spread && (
             <div className="flex items-center justify-between text-xs">
-              <span className="text-faint font-mono">Spread</span>
-              <span className="font-mono text-muted">{spread} window · random moments</span>
+              <span className="text-faint font-data">Spread</span>
+              <span className="font-data text-muted">{spread} window · random moments</span>
             </div>
           )}
           {mode === "unshield" && relay && (
             <>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-faint font-mono">Relayer</span>
-                <span className="font-mono text-acid">{relay.replace("https://", "")}</span>
+                <span className="text-faint font-data">Relayer</span>
+                <span className="font-data text-acid">{relay.replace("https://", "")}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-faint font-mono">Relayer fee</span>
-                <span className="font-mono text-muted">paid from shielded funds</span>
+                <span className="text-faint font-data">Relayer fee</span>
+                <span className="font-data text-muted">paid from shielded funds</span>
               </div>
             </>
           )}
@@ -168,13 +168,13 @@ export default function BoundaryConfirmModal({
             </p>
             <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
               <code className="font-data text-[0.8rem] text-acid break-all">{cliCmd}</code>
-              <button onClick={copy} className="label-mono text-[0.6rem] text-muted hover:text-bone shrink-0 ml-3">
+              <button onClick={copy} className="label-soft text-muted hover:text-bone shrink-0 ml-3">
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
             <a
               href="https://cowlprotocol.com/docs"
-              className="block mt-3 label-mono text-[0.6rem] text-faint hover:text-bone"
+              className="block mt-3 label-soft text-faint hover:text-bone"
             >
               Install the CLI → cowlprotocol.com/docs
             </a>

@@ -91,22 +91,15 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const relay = wallet.network.defaultRelay;
 
   const publicSide = (
-    <span className="flex items-center gap-2 text-[0.7rem] text-faint font-mono">
+    <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
       <span>
         {bal.toLocaleString("en-US", { maximumFractionDigits: 4 })} {token.symbol}
       </span>
       {mode === "shield" && !!wallet.address && (
-        <button onClick={() => setAmount(publicBal)} className="text-acid hover:text-acid2 label-mono text-[0.6rem]">
+        <button onClick={() => setAmount(publicBal)} className="text-acid hover:text-acid2 font-data text-[0.65rem]">
           MAX
         </button>
       )}
-    </span>
-  );
-
-  const shieldedSide = (
-    <span className="flex items-center gap-1.5 text-[0.7rem] text-faint font-mono">
-      <MaskLogo className="h-2 w-auto text-acid" />
-      <span>notes stay local · cowl balance</span>
     </span>
   );
 
@@ -139,11 +132,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 
         {/* Source panel */}
         <div className="bg-ink2 p-4 my-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="label-mono text-[0.62rem] text-faint">
-              {mode === "shield" ? "From · Public wallet" : "From · Shielded balance"}
+          <div className="flex items-center justify-between mb-2 gap-3">
+            <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
+              {mode === "unshield" && <MaskLogo className="h-2 w-auto text-acid" />}
+              {mode === "shield" ? "Public wallet" : "Shielded balance"}
             </span>
-            {mode === "shield" ? publicSide : shieldedSide}
+            {mode === "shield" && publicSide}
           </div>
           <div className="flex items-center gap-3">
             <input
@@ -171,7 +165,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               ))}
             </div>
           </div>
-          <div className="mt-2 text-[0.7rem] text-faint font-mono">
+          <div className="mt-2 text-[0.7rem] text-faint font-data">
             ${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
           </div>
         </div>
@@ -189,11 +183,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 
         {/* Destination panel */}
         <div className="bg-ink2 p-4 my-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="label-mono text-[0.62rem] text-faint">
-              {mode === "shield" ? "To · Shielded balance" : "To · Public wallet"}
+          <div className="flex items-center justify-between mb-2 gap-3">
+            <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
+              {mode === "shield" && <MaskLogo className="h-2 w-auto text-acid" />}
+              {mode === "shield" ? "Shielded balance" : "Public wallet"}
             </span>
-            {mode === "shield" ? shieldedSide : publicSide}
+            {mode === "unshield" && publicSide}
           </div>
           <div className="flex items-center gap-3">
             <span className="amount text-3xl md:text-4xl font-data tracking-tight text-acid">
@@ -205,14 +200,14 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 
         {/* Privacy options */}
         <div className="mt-3 px-1 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="label-mono text-[0.62rem] text-faint">Denominations</span>
+          <div className="flex items-center justify-between gap-3">
+            <span className="label-soft text-faint whitespace-nowrap">Denominations</span>
             <div className="flex gap-1">
               {[false, true].map((ex) => (
                 <button
                   key={String(ex)}
                   onClick={() => setExact(ex)}
-                  className={`px-2.5 py-1 text-xs font-mono transition-colors ${
+                  className={`px-2.5 py-1 text-xs font-data transition-colors ${
                     exact === ex ? "bg-acid text-ink" : "bg-ink2 text-muted hover:text-bone"
                   }`}
                 >
@@ -221,14 +216,14 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               ))}
             </div>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="label-mono text-[0.62rem] text-faint">Spread</span>
+          <div className="flex items-center justify-between gap-3">
+            <span className="label-soft text-faint whitespace-nowrap">Spread</span>
             <div className="flex gap-1">
               {[null, ...SPREADS].map((s) => (
                 <button
                   key={s ?? "off"}
                   onClick={() => setSpread(s)}
-                  className={`px-2.5 py-1 text-xs font-mono transition-colors ${
+                  className={`px-2.5 py-1 text-xs font-data transition-colors ${
                     spread === s ? "bg-acid text-ink" : "bg-ink2 text-muted hover:text-bone"
                   }`}
                 >
@@ -303,10 +298,10 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
       </div>
 
       {/* Footer note */}
-      <p className="text-center text-xs text-faint mt-4 font-mono">
+      <p className="text-center text-xs text-faint mt-4">
         {mode === "shield"
-          ? "Deposits cross in shared denominations. Inside, every note looks like every other."
-          : "Withdrawals arrive via the relayer. Your wallet never appears as the sender."}
+          ? "Inside the pool, every note looks like every other."
+          : "The relayer submits and pays gas. Your wallet never signs."}
       </p>
 
       <BoundaryConfirmModal
@@ -333,8 +328,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 function Row({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
   return (
     <div className="flex items-center justify-between text-xs gap-4">
-      <span className="text-faint font-mono shrink-0">{k}</span>
-      <span className={`font-mono text-right ${accent ? "text-acid" : "text-muted"}`}>{v}</span>
+      <span className="text-faint font-data shrink-0">{k}</span>
+      <span className={`font-data text-right ${accent ? "text-acid" : "text-muted"}`}>{v}</span>
     </div>
   );
 }

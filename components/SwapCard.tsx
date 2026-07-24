@@ -98,13 +98,13 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
             </button>
             {showSettings && (
               <div className="absolute right-0 top-8 z-20 bg-ink3 p-4 w-56 fade-up">
-                <p className="label-mono text-[0.62rem] text-muted mb-3">Max slippage</p>
+                <p className="label-soft text-muted mb-3">Max slippage</p>
                 <div className="flex gap-2">
                   {[0.1, 0.5, 1].map((s) => (
                     <button
                       key={s}
                       onClick={() => setSlippage(s)}
-                      className={`flex-1 py-1.5 text-xs font-mono transition-colors ${
+                      className={`flex-1 py-1.5 text-xs font-data transition-colors ${
                         slippage === s ? "bg-acid text-ink" : "bg-ink2 text-muted hover:text-bone"
                       }`}
                     >
@@ -194,7 +194,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
       </div>
 
       {/* Footer note */}
-      <p className="text-center text-xs text-faint mt-4 font-mono">
+      <p className="text-center text-xs text-faint mt-4">
         Trades route through the shielded pool. Your wallet never appears as the counterparty.
       </p>
 
@@ -244,15 +244,15 @@ function Panel({
 }) {
   return (
     <div className="bg-ink2 p-4 my-1">
-      <div className="flex items-center justify-between mb-2">
-        <span className="label-mono text-[0.62rem] text-faint">{title}</span>
+      <div className="flex items-center justify-between mb-2 gap-3">
+        <span className="label-soft text-faint whitespace-nowrap">{title}</span>
         {balance !== undefined && (
-          <span className="flex items-center gap-2 text-[0.7rem] text-faint font-mono">
+          <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
             <span>
               {parseFloat(balance).toLocaleString("en-US", { maximumFractionDigits: 4 })} {token.symbol}
             </span>
             {showMax && (
-              <button onClick={onMax} className="text-acid hover:text-acid2 label-mono text-[0.6rem]">
+              <button onClick={onMax} className="text-acid hover:text-acid2 font-data text-[0.65rem]">
                 MAX
               </button>
             )}
@@ -280,7 +280,7 @@ function Panel({
           <span className="text-faint text-xs">▾</span>
         </button>
       </div>
-      <div className="mt-2 text-[0.7rem] text-faint font-mono">
+      <div className="mt-2 text-[0.7rem] text-faint font-data">
         ${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
       </div>
     </div>
@@ -289,9 +289,9 @@ function Panel({
 
 function Row({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
   return (
-    <div className="flex items-center justify-between text-xs">
-      <span className="text-faint font-mono">{k}</span>
-      <span className={`font-mono ${accent ? "text-acid" : "text-muted"}`}>{v}</span>
+    <div className="flex items-center justify-between text-xs gap-4">
+      <span className="text-faint font-data shrink-0">{k}</span>
+      <span className={`font-data text-right ${accent ? "text-acid" : "text-muted"}`}>{v}</span>
     </div>
   );
 }

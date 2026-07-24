@@ -77,7 +77,7 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
       <div className="flex items-center justify-between mb-5">
         <span className="label-mono text-[0.72rem] text-bone">Public</span>
         {wallet.address ? (
-          <span className="label-mono text-[0.62rem] text-muted px-2 py-1 bg-ink2 font-mono">
+          <span className="font-data text-[0.68rem] text-muted px-2 py-1 bg-ink2">
             {shortAddr(wallet.address)}
           </span>
         ) : (
@@ -90,11 +90,11 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
       {wallet.address ? (
         <>
           <div className="bg-ink2 p-4 mb-1">
-            <p className="label-mono text-[0.62rem] text-faint mb-1.5">Total value</p>
+            <p className="label-soft text-faint mb-1.5">Total value</p>
             <p className="font-data text-3xl text-bone tracking-tight">
               ${total.toLocaleString("en-US", { maximumFractionDigits: 2 })}
             </p>
-            <p className="text-[0.68rem] text-faint font-mono mt-1.5">
+            <p className="text-[0.7rem] text-faint mt-1.5">
               Visible to anyone with your address — that&apos;s this side of the ledger.
             </p>
           </div>
@@ -110,7 +110,7 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
                   </span>
                   <span className="flex flex-col items-end">
                     <span className="font-data text-sm text-bone">{fmt(bal)}</span>
-                    <span className="text-xs text-faint font-mono">
+                    <span className="text-xs text-faint font-data">
                       ${fmt(bal * (USD[t.symbol] ?? 0), 2)}
                     </span>
                   </span>
@@ -170,27 +170,27 @@ function PrivateCard() {
         <Stat k="Notes" v={stats ? String(stats.notes) : "…"} />
         <Stat k="Root" v={stats ? `${stats.root.slice(0, 10)}…` : "…"} mono />
       </div>
-      <p className="text-[0.68rem] text-faint font-mono px-1 py-2 leading-relaxed">
+      <p className="text-[0.7rem] text-faint px-1 py-2 leading-relaxed">
         This is everything the chain shows: one pool, one crowd. Which notes are yours isn&apos;t
         written anywhere but with you.
       </p>
 
       {/* The owner's view lives with the keys */}
       <div className="bg-ink2 p-4 mt-2">
-        <p className="label-mono text-[0.62rem] text-faint mb-2">Your shielded book</p>
+        <p className="label-soft text-faint mb-2">Your shielded book</p>
         <p className="text-xs text-muted leading-relaxed">
           Notes never touch a server — they live with your keys, on your machine. Read your private
           balance from the terminal:
         </p>
         <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
           <code className="font-data text-[0.8rem] text-acid">cowl balance</code>
-          <button onClick={copy} className="label-mono text-[0.6rem] text-muted hover:text-bone shrink-0 ml-3">
+          <button onClick={copy} className="label-soft text-muted hover:text-bone shrink-0 ml-3">
             {copied ? "Copied" : "Copy"}
           </button>
         </div>
         <a
           href="https://cowlprotocol.com/docs"
-          className="block mt-3 label-mono text-[0.6rem] text-faint hover:text-bone"
+          className="block mt-3 label-soft text-faint hover:text-bone"
         >
           Install the CLI → cowlprotocol.com/docs
         </a>
@@ -202,7 +202,7 @@ function PrivateCard() {
 function Stat({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
     <div className="bg-ink2 p-4">
-      <p className="label-mono text-[0.62rem] text-faint mb-1.5">{k}</p>
+      <p className="label-soft text-faint mb-1.5">{k}</p>
       <p className={`text-bone tracking-tight ${mono ? "font-data text-sm pt-1" : "font-data text-xl"}`}>{v}</p>
     </div>
   );

@@ -58,9 +58,15 @@ export const NETWORKS: Record<string, NetworkDef> = {
     explorer: "https://robinhoodchain.blockscout.com",
     currency: { name: "Ether", symbol: "ETH", decimals: 18 },
     testnet: false,
-    // Mainnet shielded pool, deployed 2026-07-24 (mirror of cli/src/networks.ts).
+    // Mainnet stack, deployed 2026-07-24 (mirror of cli/src/networks.ts).
+    // Venue = the live pons Uniswap V3 (router is a SwapRouter02).
     contracts: {
       pool: "0x6f98666e9d05431dCd765AAa289a5E346AfA6a3E",
+      weth: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+      usdg: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      swapRouter: "0xCaf681a66D020601342297493863E78C959E5cb2",
+      quoter: "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7",
+      tradeAdapter: "0x0b86f9d1D2E0Abc8ab7C7BE39498855E8F4a3A98",
     },
   },
 };

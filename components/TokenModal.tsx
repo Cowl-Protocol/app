@@ -9,38 +9,53 @@ import { fetchBalance, publicClient } from "@/lib/useWallet";
 // Real token icon (self-hosted under /public/tokens), with a graceful fall back to
 // the coloured initials glyph if the image is missing, failing, or the token is a
 // custom import with no hosted icon.
+const GLYPH_BG: Record<string, string> = {
+  ETH: "#5b6bff",
+  WETH: "#3b4a9e",
+  USDG: "#d7fb08",
+  COWL: "#0a0b0e",
+};
+
+/**
+ * Token mark: the symbol set in type, with the hosted icon layered over it once
+ * it actually loads. Written this way on purpose — several issuers host their
+ * logos on CDNs that hang rather than fail for some visitors, and an icon that
+ * never resolves would otherwise leave an empty disc with no onError to catch.
+ */
 function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
   const known = TOKENS.find((t) => t.symbol === symbol);
-  const [errored, setErrored] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const logo = src ?? known?.logoURI;
 
-  if (logo && !errored) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={logo}
-        alt={symbol}
-        width={32}
-        height={32}
-        onError={() => setErrored(true)}
-        className="h-8 w-8 rounded-full shrink-0 object-cover bg-ink3"
-      />
-    );
-  }
-
-  const bg: Record<string, string> = {
-    ETH: "#5b6bff",
-    WETH: "#3b4a9e",
-    USDG: "#d7fb08",
-    COWL: "#0a0b0e",
-  };
+  const initials = symbol.length <= 4 ? symbol : symbol.slice(0, 3);
+  const size = initials.length >= 4 ? "text-[0.5rem]" : "text-[0.62rem]";
   const fg = symbol === "USDG" ? "#0a0b0e" : symbol === "COWL" ? "#d7fb08" : "#ececE7";
+
   return (
-    <span
-      className="h-8 w-8 rounded-full flex items-center justify-center text-[0.62rem] font-data shrink-0"
-      style={{ background: bg[symbol] ?? "#14171c", color: fg, boxShadow: symbol === "COWL" ? "0 0 0 1px #d7fb08 inset" : "none" }}
-    >
-      {symbol.slice(0, 3)}
+    <span className="relative h-8 w-8 shrink-0">
+      <span
+        className={`absolute inset-0 rounded-full flex items-center justify-center font-data tracking-tight ${size}`}
+        style={{
+          background: GLYPH_BG[symbol] ?? "#1c2027",
+          color: fg,
+          boxShadow: symbol === "COWL" ? "0 0 0 1px #d7fb08 inset" : "none",
+        }}
+      >
+        {initials}
+      </span>
+      {logo && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logo}
+          alt={symbol}
+          width={32}
+          height={32}
+          onLoad={() => setLoaded(true)}
+          className={`absolute inset-0 h-8 w-8 rounded-full object-cover transition-opacity duration-200 ${
+            loaded ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      )}
     </span>
   );
 }
@@ -243,7 +258,9 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
         <div className="max-h-[52vh] overflow-y-auto pb-2">
           {pinnedRows.length > 0 && (
             <>
-              {allowImport && <p className="label-soft text-faint px-5 pt-1 pb-2">Boundary assets</p>}
+              {allowImport && (
+                <p className="label-soft text-faint px-5 pt-1 pb-2 sticky top-0 bg-card z-10">Boundary assets</p>
+              )}
               {pinnedRows.map((t) => (
                 <Row key={`${t.symbol}-${t.address}`} token={t} balance={balances[t.address]} onPick={choose} />
               ))}
@@ -252,7 +269,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
 
           {listedRows.length > 0 && (
             <>
-              <p className="label-soft text-faint px-5 pt-3 pb-2">Tokens by holders</p>
+              <p className="label-soft text-faint px-5 pt-3 pb-2 sticky top-0 bg-card z-10">Tokens by holders</p>
               {listedRows.map((t) => (
                 <Row key={`${t.symbol}-${t.address}`} token={t} onPick={choose} />
               ))}
@@ -294,6 +311,18 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   );
 }
 
+// Robinhood's tokenized assets all carry the same suffix on chain. The row shows
+// the asset itself and marks the class, so the name isn't spent on boilerplate.
+const TOKENIZED_MARK = " \u2022 Robinhood Token";
+
+function isTokenized(name: string): boolean {
+  return name.endsWith(TOKENIZED_MARK);
+}
+
+function displayName(name: string): string {
+  return isTokenized(name) ? name.slice(0, -TOKENIZED_MARK.length) : name;
+}
+
 function Row({
   token,
   balance,
@@ -311,7 +340,12 @@ function Row({
     >
       <TokenGlyph symbol={token.symbol} src={token.logoURI} />
       <span className="flex flex-col flex-1 min-w-0">
-        <span className="text-sm text-bone truncate">{token.name}</span>
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="text-sm text-bone truncate">{displayName(token.name)}</span>
+          {isTokenized(token.name) && (
+            <span className="label-soft text-[0.55rem] text-acid bg-[#161a10] px-1.5 py-0.5 shrink-0">RWA</span>
+          )}
+        </span>
         <span className="flex items-center gap-2 min-w-0">
           <span className="text-xs text-faint">{token.symbol}</span>
           {!token.native && (

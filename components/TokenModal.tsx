@@ -252,7 +252,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
 
           {list.length === 0 && lookup.state === "idle" && (
             <p className="px-5 py-6 text-center text-sm text-faint">
-              {allowImport ? "No match — paste a contract address to import it" : "No tokens found"}
+              {allowImport ? "No match. Paste a contract address to import it" : "No tokens found"}
             </p>
           )}
         </div>

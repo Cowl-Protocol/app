@@ -30,11 +30,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://app.cowlprotocol.com"),
-  title: "Cowl — Trade unseen",
+  title: "Cowl · Trade unseen",
   description:
-    "Private trading on Robinhood Chain. Swap through the shielded pool — hide your edge from the crowd, not from the law.",
+    "Private trading on Robinhood Chain. Swap through the shielded pool and hide your edge from the crowd, not from the law.",
   openGraph: {
-    title: "Cowl — Trade unseen",
+    title: "Cowl · Trade unseen",
     description: "Private trading on Robinhood Chain. Swap through the shielded pool.",
     url: "https://app.cowlprotocol.com",
     siteName: "Cowl",

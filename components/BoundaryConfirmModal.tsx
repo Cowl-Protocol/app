@@ -25,12 +25,12 @@ type Props = {
 
 const STEPS: Record<BoundaryMode, { k: string; d: string }[]> = {
   shield: [
-    { k: "Denominate", d: "The amount travels in shared tiers — every 0.1 looks like every other 0.1" },
-    { k: "Prove", d: "Each deposit proves its own leaf insertion in-circuit before it settles" },
-    { k: "Settle", d: "Notes land in the pool under your shielded keys — only you can spend them" },
+    { k: "Denominate", d: "The amount travels in shared tiers where every 0.1 looks like every other 0.1" },
+    { k: "Prove", d: "Each deposit proves its own leaf insertion inside the circuit before it settles" },
+    { k: "Settle", d: "Notes land in the pool under your shielded keys. Only you can spend them" },
   ],
   unshield: [
-    { k: "Prove", d: "Spend your notes in-circuit — nothing links them back to their deposits" },
+    { k: "Prove", d: "Spend your notes inside the circuit. Nothing links them back to their deposits" },
     { k: "Relay", d: "The relayer submits and pays gas; your wallet never signs" },
     { k: "Arrive", d: "Funds land in your wallet in shared denominations" },
   ],
@@ -163,8 +163,8 @@ export default function BoundaryConfirmModal({
         <div className="px-5 pb-5">
           <div className="bg-ink2 p-4">
             <p className="text-xs text-muted leading-relaxed">
-              In-browser proving is on the way. Right now the shielded proof runs locally — run this
-              from the terminal:
+              Browser proving is on the way. Right now the shielded proof runs on your machine.
+              Run this from the terminal:
             </p>
             <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
               <code className="font-data text-[0.8rem] text-acid break-all">{cliCmd}</code>

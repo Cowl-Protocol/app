@@ -96,7 +96,7 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
               ${total.toLocaleString("en-US", { maximumFractionDigits: 2 })}
             </p>
             <p className="text-[0.7rem] text-faint mt-1.5">
-              Visible to anyone with your address — that&apos;s this side of the ledger.
+              Visible to anyone with your address. That&apos;s this side of the ledger.
             </p>
           </div>
           <div>
@@ -170,7 +170,7 @@ function PrivateCard() {
         <Stat k="Pooled USDG" v={stats ? fmt(parseFloat(stats.usdg), 2) : "…"} />
         <Stat
           k="Notes"
-          tip="Shielded values in the pool's tree. The chain sees how many exist — never who owns which."
+          tip="Shielded values in the pool's tree. The chain sees how many exist, never who owns which."
           v={stats ? String(stats.notes) : "…"}
         />
         <Stat
@@ -190,7 +190,7 @@ function PrivateCard() {
       <div className="bg-ink2 p-4 mt-2">
         <p className="label-soft text-faint mb-2">Your shielded book</p>
         <p className="text-xs text-muted leading-relaxed">
-          Notes never touch a server — they live with your keys, on your machine. Read your private
+          Notes never touch a server. They live with your keys, on your machine. Read your private
           balance from the terminal:
         </p>
         <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">

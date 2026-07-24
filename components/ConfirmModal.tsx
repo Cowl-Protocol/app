@@ -16,7 +16,7 @@ type Props = {
 };
 
 const STEPS = [
-  { k: "Prove", d: "Prove the spend in-circuit — no wallet, no amount revealed" },
+  { k: "Prove", d: "Prove the spend inside the circuit. No wallet, no amount revealed" },
   { k: "Route", d: "Relayer submits the swap and pays gas" },
   { k: "Re-shield", d: "Output lands back in the shielded pool as a fresh note" },
 ];
@@ -110,8 +110,8 @@ export default function ConfirmModal({
         <div className="px-5 pb-5">
           <div className="bg-ink2 p-4">
             <p className="text-xs text-muted leading-relaxed">
-              In-browser proving is on the way. Right now the shielded proof runs locally — execute
-              this trade from the terminal:
+              Browser proving is on the way. Right now the shielded proof runs on your machine.
+              Execute this trade from the terminal:
             </p>
             <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
               <code className="font-data text-[0.8rem] text-acid">{cliCmd}</code>

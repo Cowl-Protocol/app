@@ -29,7 +29,7 @@ export default function ConnectButton({
         onClick={onSwitch}
         className="label-mono text-[0.72rem] px-4 py-2.5 bg-[#3a1414] text-[#ff6b6b] hover:bg-[#4a1818] transition-colors"
       >
-        Wrong network — switch
+        Wrong network · switch
       </button>
     );
   }

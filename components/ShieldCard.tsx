@@ -74,7 +74,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 
   let label = "Enter an amount";
   if (amt > 0) label = mode === "shield" ? "Review shield" : "Review unshield";
-  if (belowTier) label = `Below the ${fmtUnits(smallestTier, token.decimals)} tier — go Exact`;
+  if (belowTier) label = `Below the ${fmtUnits(smallestTier, token.decimals)} tier · go Exact`;
   if (tooMany) label = "Round the amount, or go Exact";
   if (insufficient) label = `Insufficient ${token.symbol}`;
 
@@ -129,7 +129,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           <span className="flex items-center gap-2">
             <InfoTip
               align="right"
-              text="The pool's public edge. Crossings — shield in, unshield out — are visible on chain; what happens inside is not."
+              text="The pool's public edge. Shielding in and unshielding out are visible on chain; what happens inside is not."
             />
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
               Boundary
@@ -204,7 +204,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           <div className="flex items-center justify-between gap-3">
             <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
               Denominations
-              <InfoTip text="An exact amount is a fingerprint — shield 0.2337, later withdraw 0.2337, and the two ends link. Shared splits it into standard tiers (0.001 to 10) so every crossing looks like every other. Exact moves the raw amount in one transaction." />
+              <InfoTip text="An exact amount is a fingerprint: shield 0.2337, later withdraw 0.2337, and the two ends link. Shared splits it into standard tiers (0.001 to 10) so every crossing looks like every other. Exact moves the raw amount in one transaction." />
             </span>
             <div className="flex gap-1">
               {[false, true].map((ex) => (
@@ -259,7 +259,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                 k="Remainder"
                 v={`${fmtUnits(remainder, token.decimals)} stays ${
                   mode === "shield" ? "public" : "shielded"
-                } — Exact includes it`}
+                } · Exact includes it`}
               />
             )}
             {exact && <Row k="Boundary" v="exact amount · 1 transaction" />}

@@ -9,6 +9,7 @@ import Header from "@/components/Header";
 import Banner from "@/components/Banner";
 import Footer from "@/components/Footer";
 import MaskLogo from "@/components/MaskLogo";
+import InfoTip from "@/components/InfoTip";
 import { TokenGlyph } from "@/components/TokenModal";
 
 type WalletState = ReturnType<typeof useWallet>;
@@ -167,8 +168,18 @@ function PrivateCard() {
       <div className="grid grid-cols-2 gap-1 mb-1">
         <Stat k="Pooled ETH" v={stats ? fmt(parseFloat(stats.eth), 6) : "…"} />
         <Stat k="Pooled USDG" v={stats ? fmt(parseFloat(stats.usdg), 2) : "…"} />
-        <Stat k="Notes" v={stats ? String(stats.notes) : "…"} />
-        <Stat k="Root" v={stats ? `${stats.root.slice(0, 10)}…` : "…"} mono />
+        <Stat
+          k="Notes"
+          tip="Shielded values in the pool's tree. The chain sees how many exist — never who owns which."
+          v={stats ? String(stats.notes) : "…"}
+        />
+        <Stat
+          k="Root"
+          tip="The tree's current fingerprint. Spends prove membership against it without pointing at any note."
+          tipAlign="right"
+          v={stats ? `${stats.root.slice(0, 10)}…` : "…"}
+          mono
+        />
       </div>
       <p className="text-[0.7rem] text-faint px-1 py-2 leading-relaxed">
         This is everything the chain shows: one pool, one crowd. Which notes are yours isn&apos;t
@@ -199,10 +210,25 @@ function PrivateCard() {
   );
 }
 
-function Stat({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+function Stat({
+  k,
+  v,
+  tip,
+  tipAlign,
+  mono,
+}: {
+  k: string;
+  v: string;
+  tip?: string;
+  tipAlign?: "left" | "right";
+  mono?: boolean;
+}) {
   return (
     <div className="bg-ink2 p-4">
-      <p className="label-soft text-faint mb-1.5">{k}</p>
+      <p className="flex items-center gap-1.5 label-soft text-faint mb-1.5">
+        {k}
+        {tip && <InfoTip text={tip} align={tipAlign} />}
+      </p>
       <p className={`text-bone tracking-tight ${mono ? "font-data text-sm pt-1" : "font-data text-xl"}`}>{v}</p>
     </div>
   );

@@ -9,6 +9,7 @@ import type { useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
+import InfoTip from "./InfoTip";
 
 type WalletState = ReturnType<typeof useWallet>;
 
@@ -125,8 +126,14 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               </button>
             ))}
           </div>
-          <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
-            Boundary
+          <span className="flex items-center gap-2">
+            <InfoTip
+              align="right"
+              text="The pool's public edge. Crossings — shield in, unshield out — are visible on chain; what happens inside is not."
+            />
+            <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
+              Boundary
+            </span>
           </span>
         </div>
 
@@ -195,7 +202,10 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         {/* Privacy options */}
         <div className="mt-3 px-1 space-y-2.5">
           <div className="flex items-center justify-between gap-3">
-            <span className="label-soft text-faint whitespace-nowrap">Denominations</span>
+            <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
+              Denominations
+              <InfoTip text="An exact amount is a fingerprint — shield 0.2337, later withdraw 0.2337, and the two ends link. Shared splits it into standard tiers (0.001 to 10) so every crossing looks like every other. Exact moves the raw amount in one transaction." />
+            </span>
             <div className="flex gap-1">
               {[false, true].map((ex) => (
                 <button
@@ -211,7 +221,10 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             </div>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <span className="label-soft text-faint whitespace-nowrap">Spread</span>
+            <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
+              Spread
+              <InfoTip text="Fires the transactions at random moments across the window instead of one burst, so timing doesn't group them. Off submits them back to back." />
+            </span>
             <div className="flex gap-1">
               {[null, ...SPREADS].map((s) => (
                 <button

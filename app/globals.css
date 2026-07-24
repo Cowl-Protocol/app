@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: var(--font-amoria);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-tronica);
+  --font-data: var(--font-geist-mono);
+
+  /* Cowl palette — committed dark world, acid mask from the logo */
+  --color-ink: #0a0b0e;
+  --color-ink2: #0e1014;
+  --color-ink3: #14171c;
+  --color-card: #111419;
+  --color-bone: #ececE7;
+  --color-muted: #8b8f98;
+  --color-faint: #565b64;
+  --color-acid: #d7fb08;
+  --color-acid2: #e6ff52;
+  --color-line: rgba(236, 236, 231, 0.1);
+  --color-line2: rgba(236, 236, 231, 0.18);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-acid);
+  color: #0a0b0e;
+}
+
+/* Display headline: editorial serif with italic accent in acid */
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.display em {
+  font-style: italic;
+  color: var(--color-acid);
+}
+
+.serif {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.label-mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Every link & button uses the pointer cursor */
+a,
+button,
+[role="button"] {
+  cursor: pointer;
+}
+
+/* No focus border / outline anywhere — on any element or form field */
+:focus,
+:focus-visible,
+button:focus,
+button:focus-visible,
+a:focus,
+a:focus-visible,
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* No default borders on form fields */
+input,
+textarea,
+select {
+  border: none;
+}
+
+/* Amount input — strip number spinners, keep the big clean figure */
+input[type="text"].amount,
+input.amount {
+  background: transparent;
+  border: none;
+  width: 100%;
+}
+input.amount::-webkit-outer-spin-button,
+input.amount::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+@keyframes cowl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: cowl-spin 0.7s linear infinite;
+}
+
+@keyframes cowl-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: cowl-fade-up 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.grain {
+  background-image: radial-gradient(rgba(236, 236, 231, 0.04) 1px, transparent 1px);
+  background-size: 3px 3px;
+}

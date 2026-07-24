@@ -1,0 +1,83 @@
+import { defineChain, type Chain } from "viem";
+
+// Mirror of the CLI's network definitions (cli/src/networks.ts), trimmed for the
+// browser app. Robinhood Chain is an Arbitrum-based L2: the public testnet
+// (chainId 46630) went live Feb 2026 and mainnet (chainId 4663) on Jul 1 2026.
+// The app targets the testnet by default, where the shielded pool and the
+// V3-interface trade venue are deployed.
+
+export type CowlContracts = {
+  pool?: `0x${string}`;
+  weth?: `0x${string}`;
+  usdg?: `0x${string}`;
+  swapRouter?: `0x${string}`;
+  quoter?: `0x${string}`;
+  tradeAdapter?: `0x${string}`;
+  relayer?: `0x${string}`;
+};
+
+export type NetworkDef = {
+  key: string;
+  label: string;
+  chainId: number;
+  rpcUrl: string;
+  rpcFallback?: string;
+  defaultRelay?: string;
+  explorer: string;
+  currency: { name: string; symbol: string; decimals: number };
+  testnet: boolean;
+  contracts: CowlContracts;
+};
+
+export const NETWORKS: Record<string, NetworkDef> = {
+  "robinhood-testnet": {
+    key: "robinhood-testnet",
+    label: "Robinhood Chain Testnet",
+    chainId: 46630,
+    rpcUrl: "https://46630.rpc.thirdweb.com",
+    rpcFallback: "https://rpc.testnet.chain.robinhood.com",
+    defaultRelay: "https://relay.cowlprotocol.com",
+    explorer: "https://explorer.testnet.chain.robinhood.com",
+    currency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    testnet: true,
+    contracts: {
+      pool: "0xf9F825f2D6d8509c78baaa587694f74672C32A59",
+      weth: "0xdC155cafBa4D26790781c12e4B1001F933496Da2",
+      usdg: "0xa82762eDA1AF5Ed19B9BD544C121dbcF365526aC",
+      swapRouter: "0xbd610c3A708C483a64dC2C92876C2D1a8Ef43b03",
+      quoter: "0x5cD1F037A2CB277A7661Ad6c045803BFC428f84B",
+      tradeAdapter: "0xD0D74be38C0B99EBa6465e9F512c3F78EE2d1f3B",
+    },
+  },
+  "robinhood-mainnet": {
+    key: "robinhood-mainnet",
+    label: "Robinhood Chain",
+    chainId: 4663,
+    rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
+    rpcFallback: "https://robinhoodchain.blockscout.com/api/eth-rpc",
+    explorer: "https://robinhoodchain.blockscout.com",
+    currency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    testnet: false,
+    contracts: {},
+  },
+};
+
+export const DEFAULT_NETWORK = "robinhood-testnet";
+
+export function activeNetwork(): NetworkDef {
+  return NETWORKS[DEFAULT_NETWORK];
+}
+
+/** Build a viem Chain object from a network definition. */
+export function toViemChain(net: NetworkDef): Chain {
+  return defineChain({
+    id: net.chainId,
+    name: net.label,
+    nativeCurrency: net.currency,
+    rpcUrls: {
+      default: { http: [net.rpcUrl, ...(net.rpcFallback ? [net.rpcFallback] : [])] },
+    },
+    blockExplorers: { default: { name: net.label, url: net.explorer } },
+    testnet: net.testnet,
+  });
+}

@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Fully client-side app — export to static files so it can be served by Caddy on
+  // the relayer VPS (no Node process, just files under a web root). Emits to `out/`.
+  output: "export",
+  images: { unoptimized: true },
   turbopack: {
     resolveAlias: {
       // Cut off the Base Account connector's optional-dep subtree (@base-org/account →

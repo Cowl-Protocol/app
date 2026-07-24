@@ -2,16 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
+import { USD } from "@/lib/prices";
 import type { useWallet } from "@/lib/useWallet";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import ConfirmModal from "./ConfirmModal";
 
 type WalletState = ReturnType<typeof useWallet>;
 
-// Indicative USD anchors for the testnet venue — real routing quotes land when the
-// on-chain quoter is wired to the swap panel. Cross-rate = from-USD / to-USD.
-const USD: Record<string, number> = { ETH: 3000, WETH: 3000, USDG: 1, COWL: 0.5 };
-
+// Cross-rate between the shared USD anchors = from-USD / to-USD.
 function rate(from: string, to: string): number {
   const f = USD[from] ?? 0;
   const t = USD[to] ?? 0;

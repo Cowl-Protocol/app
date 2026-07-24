@@ -201,6 +201,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
       <TokenModal
         open={picking !== null}
         exclude={picking === "pay" ? receive.symbol : pay.symbol}
+        owner={wallet.address as `0x${string}` | null}
         onClose={() => setPicking(null)}
         onSelect={select}
       />

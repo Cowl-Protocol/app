@@ -23,6 +23,26 @@ const ERC20_BALANCE_ABI = [
 /** Read-only client used for balances, independent of any wallet. */
 export const publicClient = createPublicClient({ chain, transport: http() });
 
+/** Balance of `owner` for a token (native or ERC-20), formatted. */
+export async function fetchBalance(owner: `0x${string}`, token: Token): Promise<string> {
+  try {
+    if (token.native) {
+      const bal = await publicClient.getBalance({ address: owner });
+      return formatUnits(bal, token.decimals);
+    }
+    if (/^0x0{40}$/i.test(token.address)) return "0";
+    const bal = (await publicClient.readContract({
+      address: token.address,
+      abi: ERC20_BALANCE_ABI,
+      functionName: "balanceOf",
+      args: [owner],
+    })) as bigint;
+    return formatUnits(bal, token.decimals);
+  } catch {
+    return "0";
+  }
+}
+
 /**
  * Thin wrapper over wagmi + RainbowKit so the components keep a single, stable
  * wallet shape. Connecting is delegated to the themed RainbowKit modal, which
@@ -47,22 +67,7 @@ export function useWallet() {
   const getBalance = useCallback(
     async (token: Token): Promise<string> => {
       if (!address) return "0";
-      try {
-        if (token.native) {
-          const bal = await publicClient.getBalance({ address });
-          return formatUnits(bal, token.decimals);
-        }
-        if (/^0x0{40}$/i.test(token.address)) return "0";
-        const bal = (await publicClient.readContract({
-          address: token.address,
-          abi: ERC20_BALANCE_ABI,
-          functionName: "balanceOf",
-          args: [address],
-        })) as bigint;
-        return formatUnits(bal, token.decimals);
-      } catch {
-        return "0";
-      }
+      return fetchBalance(address, token);
     },
     [address],
   );

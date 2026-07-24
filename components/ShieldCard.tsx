@@ -7,14 +7,14 @@ import { decompose, groupParts, MAX_BOUNDARY_TXS, tiersFor } from "@/lib/denomin
 import { USD } from "@/lib/prices";
 import type { useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
-import { TokenGlyph } from "./TokenModal";
+import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
 
 type WalletState = ReturnType<typeof useWallet>;
 
-// The boundary moves the pool's real pair: the native coin and USDG. Everything
-// else stays private-side, where amounts never surface and need no tiers.
-const BOUNDARY_SYMBOLS = ["ETH", "USDG"] as const;
+// Curated boundary list — the pool takes any ERC-20, so the modal also imports
+// a pasted contract address (tokenized stocks and the rest of Robinhood's RWAs).
+const BOUNDARY_TOKENS = [tokenBySymbol("ETH"), tokenBySymbol("WETH"), tokenBySymbol("USDG")];
 
 const SPREADS = ["45s", "20m", "3h"] as const;
 
@@ -27,6 +27,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const [mode, setMode] = useState<BoundaryMode>("shield");
   const [token, setToken] = useState<Token>(tokenBySymbol("ETH"));
   const [amount, setAmount] = useState("");
+  const [picking, setPicking] = useState(false);
   const [exact, setExact] = useState(false);
   const [spread, setSpread] = useState<string | null>(null);
   const [publicBal, setPublicBal] = useState("0");
@@ -76,9 +77,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   if (tooMany) label = "Round the amount, or go Exact";
   if (insufficient) label = `Insufficient ${token.symbol}`;
 
-  const pick = (sym: string) => {
-    if (sym === token.symbol) return;
-    setToken(tokenBySymbol(sym));
+  const pick = (t: Token) => {
+    setToken(t);
     setAmount("");
   };
 
@@ -150,20 +150,14 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                 setAmount(v);
               }}
             />
-            <div className="shrink-0 flex items-center gap-1">
-              {BOUNDARY_SYMBOLS.map((sym) => (
-                <button
-                  key={sym}
-                  onClick={() => pick(sym)}
-                  className={`flex items-center gap-2 pl-2 pr-3 py-2 transition-colors ${
-                    token.symbol === sym ? "bg-ink3 text-bone" : "text-faint hover:text-bone"
-                  }`}
-                >
-                  <TokenGlyph symbol={sym} />
-                  <span className="label-mono text-[0.78rem]">{sym}</span>
-                </button>
-              ))}
-            </div>
+            <button
+              onClick={() => setPicking(true)}
+              className="shrink-0 flex items-center gap-2 bg-ink3 hover:bg-[#1c2027] pl-2 pr-3 py-2 transition-colors"
+            >
+              <TokenGlyph symbol={token.symbol} />
+              <span className="label-mono text-[0.78rem] text-bone">{token.symbol}</span>
+              <span className="text-faint text-xs">▾</span>
+            </button>
           </div>
           <div className="mt-2 text-[0.7rem] text-faint font-data">
             ${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
@@ -303,6 +297,15 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           ? "Inside the pool, every note looks like every other."
           : "The relayer submits and pays gas. Your wallet never signs."}
       </p>
+
+      <TokenModal
+        open={picking}
+        tokens={BOUNDARY_TOKENS}
+        allowImport
+        owner={wallet.address as `0x${string}` | null}
+        onClose={() => setPicking(false)}
+        onSelect={pick}
+      />
 
       <BoundaryConfirmModal
         open={confirming}

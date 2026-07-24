@@ -35,7 +35,7 @@ export default function InfoTip({ text, align = "left" }: { text: string; align?
       </button>
       {open && (
         <span
-          className={`absolute top-5 z-40 w-56 bg-ink3 p-3 text-xs text-muted leading-relaxed normal-case tracking-normal font-sans fade-up ${
+          className={`absolute top-5 z-40 block w-56 bg-ink3 p-3 text-xs text-muted leading-relaxed whitespace-normal normal-case tracking-normal text-left font-sans fade-up ${
             align === "right" ? "right-0" : "left-0"
           }`}
         >

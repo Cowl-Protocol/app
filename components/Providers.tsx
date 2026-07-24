@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 import "@rainbow-me/rainbowkit/styles.css";
 import { wagmiConfig } from "@/lib/wagmi";
+import ShieldedProvider from "./ShieldedProvider";
 
 // Cowl-themed RainbowKit modal: acid accent on the committed dark world.
 const cowlTheme = darkTheme({
@@ -23,7 +24,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider theme={cowlTheme} modalSize="compact">
-          {children}
+          <ShieldedProvider>{children}</ShieldedProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

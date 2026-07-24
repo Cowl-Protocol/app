@@ -10,7 +10,7 @@ import type { useWallet } from "@/lib/useWallet";
 type WalletState = ReturnType<typeof useWallet>;
 
 const LINKS = [
-  { href: "/", label: "Swap" },
+  { href: "/", label: "Swap", soon: true },
   { href: "/shield", label: "Shield" },
   { href: "/portfolio", label: "Portfolio" },
 ];
@@ -26,21 +26,30 @@ export default function Header({ wallet }: { wallet: WalletState }) {
           <span className="display text-[1.35rem] leading-none hidden sm:inline">Cowl</span>
         </a>
         <nav className="flex items-center gap-4 md:gap-6">
-          {LINKS.map((l) =>
-            pathname === l.href ? (
-              <span key={l.href} className="label-mono text-[0.72rem] text-bone border-b border-acid pb-0.5">
-                {l.label}
+          {LINKS.map((l) => {
+            const active = pathname === l.href;
+            return (
+              <span key={l.href} className="flex items-center gap-1.5">
+                {active ? (
+                  <span className="label-mono text-[0.72rem] text-bone border-b border-acid pb-0.5">
+                    {l.label}
+                  </span>
+                ) : (
+                  <Link
+                    href={l.href}
+                    className="label-mono text-[0.72rem] text-muted hover:text-bone transition-colors"
+                  >
+                    {l.label}
+                  </Link>
+                )}
+                {l.soon && (
+                  <span className="label-soft text-[0.5rem] text-faint bg-ink2 px-1 py-0.5 leading-none">
+                    Soon
+                  </span>
+                )}
               </span>
-            ) : (
-              <Link
-                key={l.href}
-                href={l.href}
-                className="label-mono text-[0.72rem] text-muted hover:text-bone transition-colors"
-              >
-                {l.label}
-              </Link>
-            ),
-          )}
+            );
+          })}
           <a
             href="https://cowlprotocol.com/docs"
             className="hidden md:inline label-mono text-[0.72rem] text-muted hover:text-bone transition-colors"

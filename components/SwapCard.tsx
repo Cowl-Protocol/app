@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { USD } from "@/lib/prices";
 import type { useWallet } from "@/lib/useWallet";
@@ -8,6 +9,11 @@ import TokenModal, { TokenGlyph } from "./TokenModal";
 import ConfirmModal from "./ConfirmModal";
 
 type WalletState = ReturnType<typeof useWallet>;
+
+// In-app swapping opens once the panel routes real quotes and proves in the
+// browser. Until then the card shows the shape of the trade and stays inert,
+// with the shielded boundary and the CLI carrying the live flows.
+const LIVE = false;
 
 // Cross-rate between the shared USD anchors = from-USD / to-USD.
 function rate(from: string, to: string): number {
@@ -87,15 +93,17 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           <span className="label-mono text-[0.72rem] text-bone">Swap</span>
           <div className="flex items-center gap-3 relative">
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
-              Private
+              {LIVE ? "Private" : "Coming soon"}
             </span>
-            <button
-              onClick={() => setShowSettings((s) => !s)}
-              className="text-faint hover:text-bone text-sm"
-              title="Settings"
-            >
-              ⚙
-            </button>
+            {LIVE && (
+              <button
+                onClick={() => setShowSettings((s) => !s)}
+                className="text-faint hover:text-bone text-sm"
+                title="Settings"
+              >
+                ⚙
+              </button>
+            )}
             {showSettings && (
               <div className="absolute right-0 top-8 z-20 bg-ink3 p-4 w-56 fade-up">
                 <p className="label-soft text-muted mb-3">Max slippage</p>
@@ -122,20 +130,21 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           title="You pay"
           token={pay}
           amount={amount}
-          editable
+          editable={LIVE}
           onAmount={setAmount}
           usd={amt * (USD[pay.symbol] ?? 0)}
           balance={payBal}
-          showMax={!!wallet.address}
+          showMax={LIVE && !!wallet.address}
           onMax={() => setAmount(payBal)}
-          onPick={() => setPicking("pay")}
+          onPick={LIVE ? () => setPicking("pay") : undefined}
         />
 
         {/* Flip */}
         <div className="relative h-0 flex justify-center">
           <button
             onClick={flip}
-            className="absolute -translate-y-1/2 h-9 w-9 flex items-center justify-center bg-ink3 hover:bg-acid hover:text-ink text-bone transition-colors"
+            disabled={!LIVE}
+            className="absolute -translate-y-1/2 h-9 w-9 flex items-center justify-center bg-ink3 text-bone transition-colors enabled:hover:bg-acid enabled:hover:text-ink disabled:text-faint disabled:cursor-default"
             title="Flip"
           >
             ↓
@@ -148,11 +157,11 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           token={receive}
           amount={out === 0 ? "" : fmt(out)}
           usd={out * (USD[receive.symbol] ?? 0)}
-          onPick={() => setPicking("receive")}
+          onPick={LIVE ? () => setPicking("receive") : undefined}
         />
 
         {/* Rate + privacy details */}
-        {amt > 0 && (
+        {LIVE && amt > 0 && (
           <div className="mt-3 px-1 space-y-2 fade-up">
             <Row
               k="Rate"
@@ -166,7 +175,14 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
 
         {/* Action */}
         <div className="mt-4">
-          {!wallet.address ? (
+          {!LIVE ? (
+            <button
+              disabled
+              className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default"
+            >
+              Swap coming soon
+            </button>
+          ) : !wallet.address ? (
             <button
               onClick={wallet.connect}
               disabled={wallet.connecting}
@@ -195,7 +211,23 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
 
       {/* Footer note */}
       <p className="text-center text-xs text-faint mt-4">
-        Trades route through the shielded pool. Your wallet never appears as the counterparty.
+        {LIVE ? (
+          "Trades route through the shielded pool. Your wallet never appears as the counterparty."
+        ) : (
+          <>
+            <Link href="/shield" className="text-muted hover:text-bone transition-colors">
+              Shield and unshield
+            </Link>{" "}
+            are live today, and{" "}
+            <a
+              href="https://cowlprotocol.com/docs"
+              className="text-muted hover:text-bone transition-colors"
+            >
+              the cowl CLI
+            </a>{" "}
+            trades through the pool right now.
+          </>
+        )}
       </p>
 
       <TokenModal
@@ -241,7 +273,7 @@ function Panel({
   balance?: string;
   showMax?: boolean;
   onMax?: () => void;
-  onPick: () => void;
+  onPick?: () => void;
 }) {
   return (
     <div className="bg-ink2 p-4 my-1">
@@ -274,11 +306,12 @@ function Panel({
         />
         <button
           onClick={onPick}
-          className="shrink-0 flex items-center gap-2 bg-ink3 hover:bg-[#1c2027] pl-2 pr-3 py-2 transition-colors"
+          disabled={!onPick}
+          className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2 transition-colors enabled:hover:bg-[#1c2027] disabled:cursor-default"
         >
-          <TokenGlyph symbol={token.symbol} />
+          <TokenGlyph symbol={token.symbol} src={token.logoURI} />
           <span className="label-mono text-[0.78rem] text-bone">{token.symbol}</span>
-          <span className="text-faint text-xs">▾</span>
+          {onPick && <span className="text-faint text-xs">▾</span>}
         </button>
       </div>
       <div className="mt-2 text-[0.7rem] text-faint font-data">

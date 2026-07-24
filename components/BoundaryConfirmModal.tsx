@@ -1,8 +1,15 @@
 "use client";
 
+// Review-and-execute modal for the boundary. Before anything runs it shows the
+// plan; Execute drives the real flow through the shielded context (prove in a
+// worker, confirm in the wallet, wait for the receipt, part by part) and this
+// modal renders that progress live. A timed spread has to keep firing after
+// the tab sleeps, so that one stays a CLI job and the modal says so.
 import { useState } from "react";
+import { formatUnits } from "viem";
 import { activeNetwork } from "@/lib/networks";
 import type { Token } from "@/lib/tokens";
+import type { OpProgress, OpStep } from "./ShieldedProvider";
 import { TokenGlyph } from "./TokenModal";
 
 export type BoundaryMode = "shield" | "unshield";
@@ -12,29 +19,37 @@ type Props = {
   mode: BoundaryMode;
   token: Token;
   amount: string;
+  /** Boundary parts in base units — one transaction each. */
+  parts: bigint[];
   /** Grouped denomination plan, e.g. "2 × 0.1 · 3 × 0.01" — omitted when exact. */
   planLabel?: string;
-  /** Number of boundary transactions the plan fans out into. */
-  txCount: number;
-  /** Sub-tier remainder note, if any. */
   remainderLabel?: string;
   exact: boolean;
   spread?: string;
-  relay?: string;
+  /** Live run state from the shielded context, when a run is under way. */
+  progress: OpProgress | null;
+  onExecute: () => void;
   onClose: () => void;
 };
 
 const STEPS: Record<BoundaryMode, { k: string; d: string }[]> = {
   shield: [
     { k: "Denominate", d: "The amount travels in shared tiers where every 0.1 looks like every other 0.1" },
-    { k: "Prove", d: "Each deposit proves its own leaf insertion inside the circuit before it settles" },
+    { k: "Prove", d: "Your browser proves each deposit's leaf insertion inside the circuit" },
     { k: "Settle", d: "Notes land in the pool under your shielded keys. Only you can spend them" },
   ],
   unshield: [
-    { k: "Prove", d: "Spend your notes inside the circuit. Nothing links them back to their deposits" },
-    { k: "Relay", d: "The relayer submits and pays gas; your wallet never signs" },
-    { k: "Arrive", d: "Funds land in your wallet in shared denominations" },
+    { k: "Prove", d: "Your browser spends the notes inside the circuit. Nothing links them to their deposits" },
+    { k: "Submit", d: "Your wallet sends the spend; only nullifiers and fresh outputs go public" },
+    { k: "Arrive", d: "Value lands at your address in shared denominations" },
   ],
+};
+
+const STEP_LABEL: Record<OpStep, string> = {
+  sync: "syncing the pool",
+  prove: "proving in your browser",
+  confirm: "confirm in your wallet",
+  mined: "landed",
 };
 
 export default function BoundaryConfirmModal({
@@ -42,22 +57,22 @@ export default function BoundaryConfirmModal({
   mode,
   token,
   amount,
+  parts,
   planLabel,
-  txCount,
   remainderLabel,
   exact,
   spread,
-  relay,
+  progress,
+  onExecute,
   onClose,
 }: Props) {
   const [copied, setCopied] = useState(false);
   if (!open) return null;
 
-  // The CLI takes the native symbol by default and an ERC-20 address otherwise —
-  // its symbol table maps to the local sim, so the on-chain USDG goes by address.
+  const net = activeNetwork();
   const tokenArg = token.native ? "" : ` ${token.address}`;
-  const netArg = ` -n ${activeNetwork().key}`;
-  const cliCmd = `cowl ${mode} ${amount}${tokenArg}${netArg}${exact ? " --exact" : ""}${spread ? ` --spread ${spread}` : ""}`;
+  const cliCmd = `cowl ${mode} ${amount}${tokenArg} -n ${net.key}${exact ? " --exact" : ""}${spread ? ` --spread ${spread}` : ""}`;
+  const running = !!progress && !progress.done && !progress.error;
 
   const copy = async () => {
     try {
@@ -72,15 +87,26 @@ export default function BoundaryConfirmModal({
   const title = mode === "shield" ? "Review shield" : "Review unshield";
   const fromLabel = mode === "shield" ? "Public wallet" : "Shielded balance";
   const toLabel = mode === "shield" ? "Shielded balance" : "Public wallet";
+  const verb = mode === "shield" ? "Shield" : "Unshield";
+
+  const fmtPart = (v: bigint) => {
+    const s = formatUnits(v, token.decimals);
+    return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4 bg-black/70" onClick={onClose}>
-      <div className="w-full max-w-md bg-card fade-up" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] px-4 bg-black/70"
+      onClick={running ? undefined : onClose}
+    >
+      <div className="w-full max-w-md bg-card fade-up max-h-[84vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <span className="label-mono text-[0.72rem] text-bone">{title}</span>
-          <button onClick={onClose} className="text-faint hover:text-bone text-lg leading-none">
-            ✕
-          </button>
+          {!running && (
+            <button onClick={onClose} className="text-faint hover:text-bone text-lg leading-none">
+              ✕
+            </button>
+          )}
         </div>
 
         {/* Amounts */}
@@ -101,87 +127,168 @@ export default function BoundaryConfirmModal({
               <span className="text-faint label-soft whitespace-nowrap">{toLabel}</span>
             </span>
             <span className="font-data text-lg text-acid whitespace-nowrap">
-              {mode === "unshield" && relay ? "≈ " : ""}
               {amount} {token.symbol}
             </span>
           </div>
         </div>
 
-        {/* Plan */}
-        <div className="px-5 py-5 space-y-4">
-          {STEPS[mode].map((s, i) => (
-            <div key={s.k} className="flex gap-3">
-              <span className="shrink-0 h-6 w-6 flex items-center justify-center bg-ink3 text-acid label-mono text-[0.62rem]">
-                {i + 1}
-              </span>
-              <div>
-                <p className="label-soft text-bone">{s.k}</p>
-                <p className="text-xs text-muted mt-0.5">{s.d}</p>
-              </div>
-            </div>
-          ))}
+        {progress ? (
+          /* ---- live run ---- */
+          <div className="px-5 py-5 space-y-2">
+            {progress.parts.map((p, i) => {
+              const tx = progress.txs.find((t) => t.part === i);
+              const isCurrent = i === progress.current && !progress.done && !progress.error;
+              const isDone = !!tx;
+              const failedHere = !!progress.error && i === progress.current;
+              return (
+                <div key={i} className="bg-ink2 px-4 py-3 flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`shrink-0 h-6 w-6 flex items-center justify-center label-mono text-[0.62rem] ${
+                        isDone ? "bg-acid text-ink" : failedHere ? "bg-[#3a1414] text-[#ff6b6b]" : "bg-ink3 text-acid"
+                      }`}
+                    >
+                      {isDone ? "✓" : i + 1}
+                    </span>
+                    <span className="font-data text-sm text-bone whitespace-nowrap">
+                      {fmtPart(p)} {progress.symbol}
+                    </span>
+                  </span>
+                  <span className="text-right min-w-0">
+                    {isDone && tx ? (
+                      <a
+                        href={`${net.explorer}/tx/${tx.hash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-data text-xs text-acid hover:text-acid2"
+                      >
+                        {tx.hash.slice(0, 10)}… ↗
+                      </a>
+                    ) : failedHere ? (
+                      <span className="font-data text-xs text-[#ff6b6b]">failed</span>
+                    ) : isCurrent ? (
+                      <span className="font-data text-xs text-muted">
+                        <span className="inline-block h-2.5 w-2.5 mr-2 align-middle border-2 border-acid border-t-transparent rounded-full spin" />
+                        {STEP_LABEL[progress.step]}
+                      </span>
+                    ) : (
+                      <span className="font-data text-xs text-faint">waiting</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
 
-          {planLabel && (
-            <div className="flex items-center justify-between text-xs pt-1">
-              <span className="text-faint font-data">Plan</span>
-              <span className="font-data text-muted text-right">
-                {planLabel} · {txCount} {mode === "shield" ? (txCount === 1 ? "deposit" : "deposits") : txCount === 1 ? "withdrawal" : "withdrawals"}
-              </span>
-            </div>
-          )}
-          {exact && (
-            <div className="flex items-center justify-between text-xs pt-1">
-              <span className="text-faint font-data">Boundary</span>
-              <span className="font-data text-muted">exact amount · 1 transaction</span>
-            </div>
-          )}
-          {remainderLabel && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-faint font-data">Remainder</span>
-              <span className="font-data text-muted text-right">{remainderLabel}</span>
-            </div>
-          )}
-          {spread && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-faint font-data">Spread</span>
-              <span className="font-data text-muted">{spread} window · random moments</span>
-            </div>
-          )}
-          {mode === "unshield" && relay && (
-            <>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-faint font-data">Relayer</span>
-                <span className="font-data text-acid">{relay.replace("https://", "")}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-faint font-data">Relayer fee</span>
-                <span className="font-data text-muted">paid from shielded funds</span>
-              </div>
-            </>
-          )}
-        </div>
+            {progress.error && (
+              <p className="text-xs text-[#ff6b6b] leading-relaxed pt-1">{progress.error}</p>
+            )}
+            {progress.done && (
+              <p className="text-xs text-muted leading-relaxed pt-1">
+                Done. {progress.txs.length === 1 ? "1 transaction" : `${progress.txs.length} transactions`} landed;
+                your balances are updated.
+              </p>
+            )}
 
-        {/* Browser proving not yet wired — hand off to the CLI, honestly */}
-        <div className="px-5 pb-5">
-          <div className="bg-ink2 p-4">
-            <p className="text-xs text-muted leading-relaxed">
-              Browser proving is on the way. Right now the shielded proof runs on your machine.
-              Run this from the terminal:
-            </p>
-            <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
-              <code className="font-data text-[0.8rem] text-acid break-all">{cliCmd}</code>
-              <button onClick={copy} className="label-soft text-muted hover:text-bone shrink-0 ml-3">
-                {copied ? "Copied" : "Copy"}
-              </button>
+            <div className="pt-3">
+              {progress.done ? (
+                <button
+                  onClick={onClose}
+                  className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
+                >
+                  Close
+                </button>
+              ) : progress.error ? (
+                <button
+                  onClick={onExecute}
+                  className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
+                >
+                  Try again
+                </button>
+              ) : (
+                <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">
+                  {verb}ing…
+                </button>
+              )}
             </div>
-            <a
-              href="https://cowlprotocol.com/docs"
-              className="block mt-3 label-soft text-faint hover:text-bone"
-            >
-              Install the CLI → cowlprotocol.com/docs
-            </a>
           </div>
-        </div>
+        ) : (
+          /* ---- review ---- */
+          <div className="px-5 py-5 space-y-4">
+            {STEPS[mode].map((s, i) => (
+              <div key={s.k} className="flex gap-3">
+                <span className="shrink-0 h-6 w-6 flex items-center justify-center bg-ink3 text-acid label-mono text-[0.62rem]">
+                  {i + 1}
+                </span>
+                <div>
+                  <p className="label-soft text-bone">{s.k}</p>
+                  <p className="text-xs text-muted mt-0.5">{s.d}</p>
+                </div>
+              </div>
+            ))}
+
+            {planLabel && (
+              <div className="flex items-center justify-between text-xs pt-1 gap-4">
+                <span className="text-faint font-data shrink-0">Plan</span>
+                <span className="font-data text-muted text-right">
+                  {planLabel} · {parts.length}{" "}
+                  {mode === "shield"
+                    ? parts.length === 1 ? "deposit" : "deposits"
+                    : parts.length === 1 ? "withdrawal" : "withdrawals"}
+                </span>
+              </div>
+            )}
+            {exact && (
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="text-faint font-data">Boundary</span>
+                <span className="font-data text-muted">exact amount · 1 transaction</span>
+              </div>
+            )}
+            {remainderLabel && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-faint font-data">Remainder</span>
+                <span className="font-data text-muted text-right">{remainderLabel}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-faint font-data">Gas payer</span>
+              <span className="font-data text-muted">
+                {mode === "shield" ? "You, per deposit" : "You, per withdrawal"}
+              </span>
+            </div>
+
+            {spread ? (
+              <div className="bg-ink2 p-4">
+                <p className="text-xs text-muted leading-relaxed">
+                  A timed spread keeps firing after this tab sleeps, so it runs from the terminal:
+                </p>
+                <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
+                  <code className="font-data text-[0.8rem] text-acid break-all">{cliCmd}</code>
+                  <button onClick={copy} className="label-soft text-muted hover:text-bone shrink-0 ml-3">
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={onExecute}
+                  className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
+                >
+                  {verb} now
+                </button>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[0.7rem] text-faint shrink-0">Prefer the terminal?</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <code className="font-data text-[0.7rem] text-muted truncate">{cliCmd}</code>
+                    <button onClick={copy} className="label-soft text-faint hover:text-bone shrink-0">
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import { decompose, groupParts, MAX_BOUNDARY_TXS, tiersFor } from "@/lib/denomin
 import { USD } from "@/lib/prices";
 import type { useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
+import { useShielded } from "./ShieldedProvider";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
@@ -25,6 +26,7 @@ function fmtUnits(v: bigint, decimals: number): string {
 }
 
 export default function ShieldCard({ wallet }: { wallet: WalletState }) {
+  const shielded = useShielded();
   const [mode, setMode] = useState<BoundaryMode>("shield");
   const [token, setToken] = useState<Token>(tokenBySymbol("ETH"));
   const [amount, setAmount] = useState("");
@@ -33,6 +35,9 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const [spread, setSpread] = useState<string | null>(null);
   const [publicBal, setPublicBal] = useState("0");
   const [confirming, setConfirming] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+
+  const tokenField = token.native ? 0n : BigInt(token.address);
 
   const refreshBal = useCallback(async () => {
     if (!wallet.address) {
@@ -64,9 +69,18 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     .join(" · ");
   const smallestTier = tiersFor(token.decimals).slice(-1)[0];
 
+  const execParts = exact ? (value > 0n ? [value] : []) : parts;
+  const requiredTotal = execParts.reduce((s, p) => s + p, 0n);
+
+  const shieldedBal = shielded.balanceOf(tokenField);
+  const unlocked = shielded.status === "ready";
+
   const amt = parseFloat(amount) || 0;
   const bal = parseFloat(publicBal) || 0;
-  const insufficient = mode === "shield" && !!wallet.address && amt > bal;
+  const insufficient =
+    mode === "shield"
+      ? !!wallet.address && amt > bal
+      : unlocked && requiredTotal > shieldedBal;
   const belowTier = !exact && value > 0n && parts.length === 0;
   const tooMany = !exact && parts.length > MAX_BOUNDARY_TXS;
   const ready =
@@ -76,7 +90,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   if (amt > 0) label = mode === "shield" ? "Review shield" : "Review unshield";
   if (belowTier) label = `Below the ${fmtUnits(smallestTier, token.decimals)} tier · go Exact`;
   if (tooMany) label = "Round the amount, or go Exact";
-  if (insufficient) label = `Insufficient ${token.symbol}`;
+  if (insufficient) label = `Insufficient ${mode === "shield" ? "" : "shielded "}${token.symbol}`;
 
   const pick = (t: Token) => {
     setToken(t);
@@ -90,7 +104,65 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 
   // Listed tokens carry a live USD price off the explorer; the anchors cover the rest.
   const usd = amt * (token.priceUsd ?? USD[token.symbol] ?? 0);
-  const relay = wallet.network.defaultRelay;
+
+  const unlock = async () => {
+    setUnlockError(null);
+    try {
+      await shielded.unlock();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setUnlockError(/rejected|denied/i.test(msg) ? "Signature declined in the wallet." : msg.split("\n")[0] ?? msg);
+    }
+  };
+
+  const execute = () => {
+    shielded.clearProgress();
+    const args = {
+      parts: execParts,
+      tokenField,
+      symbol: token.symbol,
+      decimals: token.decimals,
+    };
+    const run =
+      mode === "shield"
+        ? shielded.shieldExec({ ...args, tokenAddress: token.native ? null : token.address })
+        : shielded.unshieldExec(args);
+    run.then(() => refreshBal()).catch(() => {});
+  };
+
+  const closeConfirm = () => {
+    setConfirming(false);
+    if (shielded.progress?.done) {
+      setAmount("");
+      refreshBal();
+    }
+    shielded.clearProgress();
+  };
+
+  const shieldedSide = (
+    <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
+      {unlocked ? (
+        <>
+          <span>
+            {fmtUnits(shieldedBal, token.decimals)} {token.symbol}
+          </span>
+          {mode === "unshield" && shieldedBal > 0n && (
+            <button
+              onClick={() => setAmount(formatUnits(shieldedBal, token.decimals))}
+              className="text-acid hover:text-acid2 font-data text-[0.65rem]"
+            >
+              MAX
+            </button>
+          )}
+          {shielded.syncing && (
+            <span className="inline-block h-2 w-2 border-2 border-acid border-t-transparent rounded-full spin" />
+          )}
+        </>
+      ) : (
+        <span>locked</span>
+      )}
+    </span>
+  );
 
   const publicSide = (
     <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
@@ -145,7 +217,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               {mode === "unshield" && <MaskLogo className="h-2 w-auto text-acid" />}
               {mode === "shield" ? "Public wallet" : "Shielded balance"}
             </span>
-            {mode === "shield" && publicSide}
+            {mode === "shield" ? publicSide : shieldedSide}
           </div>
           <div className="flex items-center gap-3">
             <input
@@ -190,7 +262,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               {mode === "shield" && <MaskLogo className="h-2 w-auto text-acid" />}
               {mode === "shield" ? "Shielded balance" : "Public wallet"}
             </span>
-            {mode === "unshield" && publicSide}
+            {mode === "shield" ? shieldedSide : publicSide}
           </div>
           <div className="flex items-center gap-3">
             <span className="amount text-3xl md:text-4xl font-data tracking-tight text-acid">
@@ -264,15 +336,9 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               />
             )}
             {exact && <Row k="Boundary" v="exact amount · 1 transaction" />}
-            {spread && <Row k="Spread" v={`${spread} window · random moments`} />}
-            {mode === "shield" ? (
-              <Row k="Gas payer" v="You, per deposit" />
-            ) : (
-              <>
-                <Row k="Route" v="Shielded pool → relayer" accent />
-                <Row k="Gas payer" v="Relayer (gasless)" accent />
-              </>
-            )}
+            {spread && <Row k="Spread" v={`${spread} window · random moments · runs from the CLI`} />}
+            <Row k="Proving" v="In your browser" accent />
+            <Row k="Gas payer" v={mode === "shield" ? "You, per deposit" : "You, per withdrawal"} />
           </div>
         )}
 
@@ -293,6 +359,14 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             >
               Switch to {wallet.network.label}
             </button>
+          ) : !unlocked ? (
+            <button
+              onClick={unlock}
+              disabled={shielded.status === "unlocking"}
+              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
+            >
+              {shielded.status === "unlocking" ? "Check your wallet…" : "Unlock shielded account"}
+            </button>
           ) : (
             <button
               onClick={() => ready && setConfirming(true)}
@@ -302,14 +376,17 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               {label}
             </button>
           )}
+          {unlockError && <p className="text-xs text-[#ff6b6b] mt-2 text-center">{unlockError}</p>}
         </div>
       </div>
 
       {/* Footer note */}
       <p className="text-center text-xs text-faint mt-4">
-        {mode === "shield"
-          ? "Inside the pool, every note looks like every other."
-          : "The relayer submits and pays gas. Your wallet never signs."}
+        {!unlocked
+          ? "One signature derives your shielded keys. They never leave this tab."
+          : mode === "shield"
+            ? "Inside the pool, every note looks like every other."
+            : "Withdrawals prove in your browser and land at your wallet."}
       </p>
 
       <TokenModal
@@ -326,8 +403,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         mode={mode}
         token={token}
         amount={amount}
+        parts={execParts}
         planLabel={!exact && parts.length > 0 ? planLabel : undefined}
-        txCount={exact ? 1 : parts.length}
         remainderLabel={
           !exact && remainder > 0n
             ? `${fmtUnits(remainder, token.decimals)} ${token.symbol} stays ${mode === "shield" ? "public" : "shielded"}`
@@ -335,8 +412,9 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         }
         exact={exact}
         spread={spread ?? undefined}
-        relay={relay}
-        onClose={() => setConfirming(false)}
+        progress={shielded.progress}
+        onExecute={execute}
+        onClose={closeConfirm}
       />
     </div>
   );

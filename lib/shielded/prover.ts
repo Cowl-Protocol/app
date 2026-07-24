@@ -17,7 +17,10 @@ function getWorker(): Worker | null {
   if (workerBroken || typeof Worker === "undefined") return null;
   if (worker) return worker;
   try {
-    worker = new Worker(new URL("./proveWorker.ts", import.meta.url), { type: "module" });
+    // Pre-bundled by scripts/build-worker.mjs — a stable path, no bundler
+    // involvement, so bb.js's nested workers and the wasm files resolve
+    // beside it at the web root.
+    worker = new Worker("/prove-worker.js", { type: "module" });
     worker.onmessage = (e: MessageEvent<ProveResponse>) => {
       const p = pending.get(e.data.id);
       if (!p) return;

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatUnits } from "viem";
 import { useWallet, shortAddr } from "@/lib/useWallet";
-import { TOKENS } from "@/lib/tokens";
+import { TOKENS, tokenMetaForField } from "@/lib/tokens";
 import { USD } from "@/lib/prices";
 import { usePoolStats } from "@/lib/pool";
+import { useShielded } from "@/components/ShieldedProvider";
 import Header from "@/components/Header";
 import Banner from "@/components/Banner";
 import Footer from "@/components/Footer";
@@ -39,7 +41,7 @@ export default function Portfolio() {
 
           <div className="grid md:grid-cols-2 gap-4 items-start">
             <PublicCard wallet={wallet} />
-            <PrivateCard />
+            <PrivateCard wallet={wallet} />
           </div>
         </div>
       </main>
@@ -138,19 +140,33 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
   );
 }
 
-function PrivateCard() {
+function PrivateCard({ wallet }: { wallet: WalletState }) {
   const stats = usePoolStats();
+  const shielded = useShielded();
   const [copied, setCopied] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
 
-  const copy = async () => {
+  const copy = async (text: string) => {
     try {
-      await navigator.clipboard.writeText("cowl balance");
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
-      /* clipboard blocked — the command is visible to copy manually */
+      /* clipboard blocked — the text is visible to copy manually */
     }
   };
+
+  const unlock = async () => {
+    setUnlockError(null);
+    try {
+      await shielded.unlock();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setUnlockError(/rejected|denied/i.test(msg) ? "Signature declined in the wallet." : msg.split("\n")[0] ?? msg);
+    }
+  };
+
+  const unlocked = shielded.status === "ready";
 
   return (
     <div className="bg-card p-5 fade-up">
@@ -186,25 +202,102 @@ function PrivateCard() {
         written anywhere but with you.
       </p>
 
-      {/* The owner's view lives with the keys */}
+      {/* The owner's view — unlocked in this tab, or an invitation to */}
       <div className="bg-ink2 p-4 mt-2">
-        <p className="label-soft text-faint mb-2">Your shielded book</p>
-        <p className="text-xs text-muted leading-relaxed">
-          Notes never touch a server. They live with your keys, on your machine. Read your private
-          balance from the terminal:
-        </p>
-        <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
-          <code className="font-data text-[0.8rem] text-acid">cowl balance</code>
-          <button onClick={copy} className="label-soft text-muted hover:text-bone shrink-0 ml-3">
-            {copied ? "Copied" : "Copy"}
-          </button>
+        <div className="flex items-center justify-between mb-2 gap-3">
+          <p className="label-soft text-faint">Your shielded book</p>
+          {unlocked && (
+            <span className="flex items-center gap-3">
+              <button
+                onClick={() => shielded.refresh()}
+                className="label-soft text-muted hover:text-bone"
+              >
+                {shielded.syncing ? "Syncing…" : "Refresh"}
+              </button>
+              <button onClick={shielded.lock} className="label-soft text-faint hover:text-bone">
+                Lock
+              </button>
+            </span>
+          )}
         </div>
-        <a
-          href="https://cowlprotocol.com/docs"
-          className="block mt-3 label-soft text-faint hover:text-bone"
-        >
-          Install the CLI → cowlprotocol.com/docs
-        </a>
+
+        {unlocked ? (
+          <>
+            {shielded.balances.length === 0 ? (
+              <p className="text-xs text-muted leading-relaxed">
+                No notes yet. Shield something and it appears here, visible only in this tab.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {shielded.balances.map((b) => {
+                  const meta = tokenMetaForField(b.token);
+                  return (
+                    <div key={meta.symbol} className="flex items-center justify-between bg-ink px-3 py-2.5">
+                      <span className="text-sm text-bone">{meta.symbol}</span>
+                      <span className="flex flex-col items-end">
+                        <span className="font-data text-sm text-acid">
+                          {formatUnits(b.amount, meta.decimals)}
+                        </span>
+                        <span className="text-[0.65rem] text-faint font-data">
+                          {b.notes} {b.notes === 1 ? "note" : "notes"}
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {shielded.paymentAddress && (
+              <div className="mt-3">
+                <p className="label-soft text-faint mb-1.5">Payment address</p>
+                <div className="flex items-center justify-between bg-ink px-3 py-2.5 gap-3">
+                  <code className="font-data text-[0.7rem] text-muted truncate">
+                    {shielded.paymentAddress.slice(0, 18)}…{shielded.paymentAddress.slice(-6)}
+                  </code>
+                  <button
+                    onClick={() => copy(shielded.paymentAddress!)}
+                    className="label-soft text-muted hover:text-bone shrink-0"
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <p className="text-[0.68rem] text-faint mt-1.5 leading-relaxed">
+                  Anyone can send to it privately, from the app or with cowl send.
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted leading-relaxed">
+              One wallet signature derives your shielded keys and reads your private balance, in
+              this tab only. Nothing touches a server.
+            </p>
+            <div className="mt-3">
+              {wallet.address ? (
+                <button
+                  onClick={unlock}
+                  disabled={shielded.status === "unlocking"}
+                  className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
+                >
+                  {shielded.status === "unlocking" ? "Check your wallet…" : "Unlock shielded account"}
+                </button>
+              ) : (
+                <button
+                  onClick={wallet.connect}
+                  disabled={wallet.connecting}
+                  className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
+                >
+                  {wallet.connecting ? "Connecting…" : "Connect wallet"}
+                </button>
+              )}
+              {unlockError && <p className="text-xs text-[#ff6b6b] mt-2 text-center">{unlockError}</p>}
+            </div>
+            <p className="text-[0.68rem] text-faint mt-3 leading-relaxed">
+              The terminal reads the same pool: cowl balance.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

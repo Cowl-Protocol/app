@@ -188,19 +188,25 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   if (!open) return null;
 
   const needle = q.trim().toLowerCase();
-  const list = known
-    .filter(
-      (t) =>
-        t.symbol !== exclude &&
-        (t.symbol.toLowerCase().includes(needle) ||
-          t.name.toLowerCase().includes(needle) ||
-          t.address.toLowerCase() === needle),
-    )
+  const matches = (t: Token) =>
+    t.symbol !== exclude &&
+    (t.symbol.toLowerCase().includes(needle) ||
+      t.name.toLowerCase().includes(needle) ||
+      t.address.toLowerCase() === needle);
+
+  const pinnedRows = pinned
+    .filter(matches)
     .sort(
       (a, b) =>
-        (parseFloat(balances[b.address] ?? "0") || 0) - (parseFloat(balances[a.address] ?? "0") || 0) ||
-        (b.holders ?? 0) - (a.holders ?? 0),
+        (parseFloat(balances[b.address] ?? "0") || 0) - (parseFloat(balances[a.address] ?? "0") || 0),
     );
+  const listedRows = known.filter((t) => !pinned.includes(t)).filter(matches);
+  const list = [...pinnedRows, ...listedRows];
+
+  const choose = (t: Token) => {
+    onSelect(t);
+    onClose();
+  };
 
   const importToken = (t: Token) => {
     const next = [...imported, t];
@@ -235,35 +241,23 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
           />
         </div>
         <div className="max-h-[52vh] overflow-y-auto pb-2">
-          {list.map((t) => {
-            const hasBal = balances[t.address] !== undefined;
-            const bal = parseFloat(balances[t.address] ?? "0") || 0;
-            return (
-              <button
-                key={`${t.symbol}-${t.address}`}
-                onClick={() => {
-                  onSelect(t);
-                  onClose();
-                }}
-                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-ink3 transition-colors text-left"
-              >
-                <TokenGlyph symbol={t.symbol} src={t.logoURI} />
-                <span className="flex flex-col flex-1 min-w-0">
-                  <span className="text-sm text-bone">{t.symbol}</span>
-                  <span className="text-xs text-faint truncate">{t.name}</span>
-                </span>
-                {owner && hasBal ? (
-                  <span className="font-data text-sm text-muted shrink-0">
-                    {bal === 0 ? "0" : bal.toLocaleString("en-US", { maximumFractionDigits: 4 })}
-                  </span>
-                ) : t.holders ? (
-                  <span className="font-data text-[0.68rem] text-faint shrink-0">
-                    {Intl.NumberFormat("en-US", { notation: "compact" }).format(t.holders)} holders
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
+          {pinnedRows.length > 0 && (
+            <>
+              {allowImport && <p className="label-soft text-faint px-5 pt-1 pb-2">Boundary assets</p>}
+              {pinnedRows.map((t) => (
+                <Row key={`${t.symbol}-${t.address}`} token={t} balance={balances[t.address]} onPick={choose} />
+              ))}
+            </>
+          )}
+
+          {listedRows.length > 0 && (
+            <>
+              <p className="label-soft text-faint px-5 pt-3 pb-2">Tokens by holders</p>
+              {listedRows.map((t) => (
+                <Row key={`${t.symbol}-${t.address}`} token={t} onPick={choose} />
+              ))}
+            </>
+          )}
 
           {listLoading && allowImport && (
             <p className="px-5 py-3 text-xs text-faint">Loading the token list…</p>
@@ -280,12 +274,12 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
               onClick={() => importToken(lookup.token)}
               className="w-full flex items-center gap-3 px-5 py-3 hover:bg-ink3 transition-colors text-left"
             >
-              <TokenGlyph symbol={lookup.token.symbol} />
-              <span className="flex flex-col flex-1">
-                <span className="text-sm text-bone">{lookup.token.symbol}</span>
-                <span className="text-xs text-faint">{lookup.token.name}</span>
+              <TokenGlyph symbol={lookup.token.symbol} src={lookup.token.logoURI} />
+              <span className="flex flex-col flex-1 min-w-0">
+                <span className="text-sm text-bone truncate">{lookup.token.name}</span>
+                <span className="text-xs text-faint truncate">{lookup.token.symbol}</span>
               </span>
-              <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">Import</span>
+              <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10] shrink-0">Import</span>
             </button>
           )}
 
@@ -297,5 +291,45 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
         </div>
       </div>
     </div>
+  );
+}
+
+function Row({
+  token,
+  balance,
+  onPick,
+}: {
+  token: Token;
+  balance?: string;
+  onPick: (t: Token) => void;
+}) {
+  const bal = parseFloat(balance ?? "0") || 0;
+  return (
+    <button
+      onClick={() => onPick(token)}
+      className="w-full flex items-center gap-3 px-5 py-2.5 hover:bg-ink3 transition-colors text-left"
+    >
+      <TokenGlyph symbol={token.symbol} src={token.logoURI} />
+      <span className="flex flex-col flex-1 min-w-0">
+        <span className="text-sm text-bone truncate">{token.name}</span>
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="text-xs text-faint">{token.symbol}</span>
+          {!token.native && (
+            <span className="font-data text-[0.65rem] text-faint/70 truncate">
+              {token.address.slice(0, 6)}…{token.address.slice(-4)}
+            </span>
+          )}
+        </span>
+      </span>
+      {balance !== undefined ? (
+        <span className="font-data text-sm text-muted shrink-0">
+          {bal === 0 ? "0" : bal.toLocaleString("en-US", { maximumFractionDigits: 4 })}
+        </span>
+      ) : token.holders ? (
+        <span className="font-data text-[0.68rem] text-faint shrink-0">
+          {Intl.NumberFormat("en-US", { notation: "compact" }).format(token.holders)} holders
+        </span>
+      ) : null}
+    </button>
   );
 }

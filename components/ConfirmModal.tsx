@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { activeNetwork } from "@/lib/networks";
 import type { Token } from "@/lib/tokens";
 import { TokenGlyph } from "./TokenModal";
 
@@ -34,7 +35,7 @@ export default function ConfirmModal({
   const [copied, setCopied] = useState(false);
   if (!open) return null;
 
-  const cliCmd = `cowl trade ${amount} ${receive.symbol}`;
+  const cliCmd = `cowl trade ${amount} ${receive.symbol} -n ${activeNetwork().key}`;
 
   const copy = async () => {
     try {

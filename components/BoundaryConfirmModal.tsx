@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { activeNetwork } from "@/lib/networks";
 import type { Token } from "@/lib/tokens";
 import { TokenGlyph } from "./TokenModal";
 
@@ -55,7 +56,8 @@ export default function BoundaryConfirmModal({
   // The CLI takes the native symbol by default and an ERC-20 address otherwise —
   // its symbol table maps to the local sim, so the on-chain USDG goes by address.
   const tokenArg = token.native ? "" : ` ${token.address}`;
-  const cliCmd = `cowl ${mode} ${amount}${tokenArg}${exact ? " --exact" : ""}${spread ? ` --spread ${spread}` : ""}`;
+  const netArg = ` -n ${activeNetwork().key}`;
+  const cliCmd = `cowl ${mode} ${amount}${tokenArg}${netArg}${exact ? " --exact" : ""}${spread ? ` --spread ${spread}` : ""}`;
 
   const copy = async () => {
     try {

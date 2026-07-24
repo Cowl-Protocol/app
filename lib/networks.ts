@@ -3,8 +3,7 @@ import { defineChain, type Chain } from "viem";
 // Mirror of the CLI's network definitions (cli/src/networks.ts), trimmed for the
 // browser app. Robinhood Chain is an Arbitrum-based L2: the public testnet
 // (chainId 46630) went live Feb 2026 and mainnet (chainId 4663) on Jul 1 2026.
-// The app targets the testnet by default, where the shielded pool and the
-// V3-interface trade venue are deployed.
+// The shielded pool is deployed on both; the app targets mainnet by default.
 
 export type CowlContracts = {
   pool?: `0x${string}`;
@@ -71,7 +70,9 @@ export const NETWORKS: Record<string, NetworkDef> = {
   },
 };
 
-export const DEFAULT_NETWORK = "robinhood-testnet";
+// Mainnet is the live network: the pool shipped there 2026-07-24 and the chain's
+// tokenized assets are on it. Testnet stays one click away in the selector.
+export const DEFAULT_NETWORK = "robinhood-mainnet";
 
 const STORE_KEY = "cowl.network";
 

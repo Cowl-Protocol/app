@@ -15,9 +15,9 @@ import InfoTip from "./InfoTip";
 const LIVE = false;
 
 const WAYS = [
-  { k: "Shield", d: "Cross the boundary and keep notes in the pool. The book you build in there is yours alone" },
-  { k: "Hold", d: "Hold COWL through the season, not just through the pump" },
-  { k: "Trade", d: "Trade through the pool. The CLI carries it today, the app is next" },
+  { k: "Transact", d: "Every transaction through the pool counts. Shield in, unshield out, send, trade. The more you move, the more you earn" },
+  { k: "Stay private", d: "Transactions nobody can see still count. You show yours when you claim, to us and no one else" },
+  { k: "Hold", d: "A slice of every season goes to the ones holding COWL through it" },
 ];
 
 export default function RewardsCard() {
@@ -82,10 +82,11 @@ export default function RewardsCard() {
         {/* How rewards arrive */}
         <div className="mt-4 px-1 space-y-2">
           <Row k="Paid in" v="COWL" />
+          <Row k="Earned by" v="every transaction you make" accent />
           <Row k="Delivery" v="private, straight to your shielded book" accent />
           <Row k="On the tape" v="a distribution happened, nothing more" />
           <Row k="Funded by" v="the hood's fees" />
-          <Row k="Format" v="seasons" />
+          <Row k="Format" v="seasons, each with its own pot" />
         </div>
 
         {/* Action */}

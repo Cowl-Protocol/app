@@ -41,8 +41,11 @@ function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
   const size = initials.length >= 4 ? "text-[0.5rem]" : "text-[0.62rem]";
   const fg = symbol === "USDG" ? "#0a0b0e" : symbol === "COWL" ? "#d7fb08" : "#ececE7";
 
+  // inline-flex, not a bare span: width and height do not apply to an inline
+  // element, so the wrapper collapsed to nothing and both layers landed on top
+  // of each other, spilling outside the circle.
   return (
-    <span className="relative h-8 w-8 shrink-0">
+    <span className="relative inline-flex h-8 w-8 shrink-0 overflow-hidden rounded-full">
       <span
         className={`absolute inset-0 rounded-full flex items-center justify-center font-data tracking-tight ${size}`}
         style={{

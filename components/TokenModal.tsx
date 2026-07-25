@@ -141,7 +141,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   // The wallet's own assets, balances and prices included, from the same source
   // the portfolio reads. A token discovered a moment ago arrives with its
   // balance attached rather than needing a second pass to fill it in.
-  const { assets } = useAssets(open ? (owner ?? null) : null);
+  const { assets, loading: assetsLoading } = useAssets(open ? (owner ?? null) : null);
 
   useEffect(() => {
     if (open && allowImport) setImported(loadImported());
@@ -169,7 +169,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   const byAddress = new Map<string, Asset>();
   for (const a of assets) byAddress.set(a.token.address.toLowerCase(), a);
   const asAsset = (t: Token): Asset =>
-    byAddress.get(t.address.toLowerCase()) ?? { token: t, balance: null, price: null };
+    byAddress.get(t.address.toLowerCase()) ?? { token: t, balance: null, price: null, status: "unasked" };
 
   const seen = new Set<string>();
   const pinned: Asset[] = [...base.map(asAsset), ...assets, ...imported.map(asAsset)].filter((a) => {
@@ -182,7 +182,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
     ...pinned,
     ...listed
       .filter((l) => !seen.has(l.address.toLowerCase()))
-      .map((l) => ({ token: l, balance: null, price: null }) as Asset),
+      .map((l) => ({ token: l, balance: null, price: null, status: "unasked" }) as Asset),
   ];
 
   // A pasted address that isn't already listed gets read straight off the chain.
@@ -281,7 +281,13 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
                 <p className="label-soft text-faint px-5 pt-1 pb-2 sticky top-0 bg-card z-10">Boundary assets</p>
               )}
               {pinnedRows.map((a) => (
-                <AssetRow key={a.token.address} asset={a} onPick={choose} showAddress />
+                <AssetRow
+                  key={a.token.address}
+                  asset={a}
+                  onPick={choose}
+                  showAddress
+                  loading={!!owner && assetsLoading}
+                />
               ))}
             </>
           )}

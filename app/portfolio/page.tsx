@@ -5,6 +5,7 @@ import { useWallet, shortAddr } from "@/lib/useWallet";
 import { tokenMetaForField } from "@/lib/tokens";
 import { useAssets, totalUsd } from "@/lib/assets";
 import AssetRow from "@/components/AssetRow";
+import Spinner from "@/components/Spinner";
 import { formatUnitsExact } from "@/lib/prices";
 import { usePoolStats } from "@/lib/pool";
 import { useShielded } from "@/components/ShieldedProvider";
@@ -88,9 +89,14 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
           </div>
           <div>
             {assets.map((a) => (
-              <AssetRow key={a.token.address} asset={a} />
+              <AssetRow key={a.token.address} asset={a} loading={loading} />
             ))}
-            {loading && <p className="px-1 py-2 text-xs text-faint">Looking for your tokens…</p>}
+            {loading && (
+              <p className="flex items-center gap-2 px-1 py-2 text-xs text-faint">
+                <Spinner className="h-3 w-3" />
+                Looking for your tokens
+              </p>
+            )}
           </div>
         </>
       ) : (

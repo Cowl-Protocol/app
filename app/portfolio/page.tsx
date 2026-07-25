@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { formatUnits } from "viem";
 import { useWallet, shortAddr } from "@/lib/useWallet";
 import { TOKENS, tokenMetaForField } from "@/lib/tokens";
-import { formatBalance, USD } from "@/lib/prices";
+import { formatBalance, formatUnitsExact, USD } from "@/lib/prices";
 import { usePoolStats } from "@/lib/pool";
 import { useShielded } from "@/components/ShieldedProvider";
 import Header from "@/components/Header";
@@ -116,7 +116,9 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
                   <span className="flex flex-col items-end">
                     {known ? (
                       <>
-                        <span className="font-data text-sm text-bone">{formatBalance(bal)}</span>
+                        <span className="font-data text-sm text-bone">
+                          {formatBalance(balances[t.symbol] ?? "0")}
+                        </span>
                         <span className="text-xs text-faint font-data">
                           ${fmt(bal * (USD[t.symbol] ?? 0), 2)}
                         </span>
@@ -244,7 +246,7 @@ function PrivateCard({ wallet }: { wallet: WalletState }) {
                       <span className="text-sm text-bone">{meta.symbol}</span>
                       <span className="flex flex-col items-end">
                         <span className="font-data text-sm text-acid">
-                          {formatUnits(b.amount, meta.decimals)}
+                          {formatUnitsExact(b.amount, meta.decimals)}
                         </span>
                         <span className="text-[0.65rem] text-faint font-data">
                           {b.notes} {b.notes === 1 ? "note" : "notes"}

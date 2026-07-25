@@ -283,7 +283,7 @@ function Panel({
         {balance !== undefined && (
           <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
             <span>
-              {formatBalance(parseFloat(balance))} {token.symbol}
+              {formatBalance(balance)} {token.symbol}
             </span>
             {showMax && (
               <button onClick={onMax} className="text-acid hover:text-acid2 font-data text-[0.65rem]">

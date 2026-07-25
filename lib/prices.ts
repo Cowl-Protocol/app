@@ -1,3 +1,5 @@
+import { formatUnits } from "viem";
+
 // Indicative USD anchors for the testnet venue — real routing quotes land when
 // the on-chain quoter is wired to the panels. Shared by the swap card, the
 // shield card and the portfolio so every surface prices the same way.
@@ -8,13 +10,25 @@ export function usdValue(symbol: string, amount: number): number {
 }
 
 /**
- * A balance, rendered without lying about it. Four decimal places is right for
- * an ordinary holding and wrong for a small one: a testnet balance of 1.4e-8
- * formats to "0", which reads as an empty wallet rather than a small one. The
- * precision follows the magnitude, so a nonzero balance always shows as nonzero.
+ * A balance, exactly as the chain reports it.
+ *
+ * Takes the string formatUnits already produced, so no float and no rounding
+ * step ever touches the number: every digit the chain reported survives to the
+ * screen. Trailing zeros go, since they carry nothing, and the integer part
+ * gets thousands separators for readability. Rounding a balance to a fixed
+ * number of places is what turned a small holding into a flat zero and a
+ * precise one into an approximation.
  */
-export function formatBalance(v: number): string {
-  if (!isFinite(v) || v === 0) return "0";
-  const decimals = v >= 1 ? 4 : v >= 0.0001 ? 6 : 12;
-  return v.toLocaleString("en-US", { maximumFractionDigits: decimals });
+export function formatBalance(exact: string): string {
+  if (!exact) return "0";
+  const negative = exact.startsWith("-");
+  const [whole = "0", fraction = ""] = exact.replace("-", "").split(".");
+  const trimmed = fraction.replace(/0+$/, "");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${negative ? "-" : ""}${grouped}${trimmed ? `.${trimmed}` : ""}`;
+}
+
+/** Same, from base units. */
+export function formatUnitsExact(value: bigint, decimals: number): string {
+  return formatBalance(formatUnits(value, decimals));
 }

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatUnits, getAddress, isAddress } from "viem";
 import { TOKENS, type Token } from "@/lib/tokens";
 import { fetchTokenList } from "@/lib/tokenList";
-import { formatBalance } from "@/lib/prices";
+import { formatUnitsExact } from "@/lib/prices";
 import { fetchBalance, publicClient } from "@/lib/useWallet";
 
 // Real token icon (self-hosted under /public/tokens), with a graceful fall back to
@@ -349,7 +349,7 @@ function Row({
   balance?: bigint;
   onPick: (t: Token) => void;
 }) {
-  const bal = balance === undefined ? 0 : Number(formatUnits(balance, token.decimals));
+  const bal = balance === undefined ? "0" : formatUnitsExact(balance, token.decimals);
   return (
     <button
       onClick={() => onPick(token)}
@@ -373,7 +373,7 @@ function Row({
         </span>
       </span>
       {balance !== undefined ? (
-        <span className="font-data text-sm text-muted shrink-0">{formatBalance(bal)}</span>
+        <span className="font-data text-sm text-muted shrink-0">{bal}</span>
       ) : token.holders ? (
         <span className="font-data text-[0.68rem] text-faint shrink-0">
           {Intl.NumberFormat("en-US", { notation: "compact" }).format(token.holders)} holders

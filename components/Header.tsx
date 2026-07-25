@@ -19,8 +19,6 @@ const LINKS = [
   { href: "/earn", label: "Earn", soon: true },
 ];
 
-const DOCS = "https://cowlprotocol.com/docs";
-
 export default function Header({ wallet }: { wallet: WalletState }) {
   const pathname = usePathname();
 
@@ -52,12 +50,6 @@ export default function Header({ wallet }: { wallet: WalletState }) {
               </span>
             );
           })}
-          <a
-            href={DOCS}
-            className="label-mono text-[0.72rem] text-muted hover:text-bone transition-colors"
-          >
-            Docs
-          </a>
         </nav>
 
         {/* Narrower than that, the same destinations fold into one control so
@@ -135,13 +127,6 @@ function NavMenu({ pathname }: { pathname: string }) {
               </Link>
             );
           })}
-          <a
-            href={DOCS}
-            onClick={() => setOpen(false)}
-            className="flex items-center px-4 py-3 label-mono text-[0.72rem] text-muted hover:text-bone hover:bg-ink3 transition-colors"
-          >
-            Docs ↗
-          </a>
         </div>
       )}
     </div>

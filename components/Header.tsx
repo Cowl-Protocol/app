@@ -38,9 +38,7 @@ export default function Header({ wallet }: { wallet: WalletState }) {
             return (
               <span key={l.href} className="relative">
                 {active ? (
-                  <span className="label-mono text-[0.72rem] text-acid border-b border-acid pb-0.5">
-                    {l.label}
-                  </span>
+                  <span className="label-mono text-[0.72rem] text-acid">{l.label}</span>
                 ) : (
                   <Link
                     href={l.href}
@@ -155,7 +153,7 @@ function NavMenu({ pathname }: { pathname: string }) {
  */
 function SoonTag() {
   return (
-    <span className="absolute -top-2.5 -right-3 label-soft text-[0.38rem] tracking-[0.1em] text-faint bg-ink3 rounded-full px-1.5 py-[0.15rem] leading-none pointer-events-none">
+    <span className="absolute -top-2 -right-2.5 label-soft text-[0.3rem] tracking-[0.08em] text-faint bg-ink3 rounded-full px-[0.3rem] py-[0.12rem] leading-none pointer-events-none">
       Soon
     </span>
   );

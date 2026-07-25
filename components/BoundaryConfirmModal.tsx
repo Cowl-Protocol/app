@@ -2,15 +2,14 @@
 
 // Review-and-execute modal for the boundary. Before anything runs it shows the
 // plan; Execute drives the real flow through the shielded context (prove in a
-// worker, confirm in the wallet, wait for the receipt, part by part) and this
-// modal renders that progress live. A timed spread has to keep firing after
-// the tab sleeps, so that one stays a CLI job and the modal says so.
-import { useEffect, useState } from "react";
-import { formatUnits } from "viem";
+// worker, confirm in the wallet, wait for the receipt, part by part) and
+// RunProgress renders that live. A spread fires its parts from this tab, so
+// the copy asks for the tab to stay open until the last one lands.
+import { useState } from "react";
 import { activeNetwork } from "@/lib/networks";
-import { formatRemaining } from "@/lib/spread";
 import type { Token } from "@/lib/tokens";
-import type { OpProgress, OpStep } from "./ShieldedProvider";
+import type { OpProgress } from "./ShieldedProvider";
+import RunProgress from "./RunProgress";
 import { TokenGlyph } from "./TokenModal";
 
 export type BoundaryMode = "shield" | "unshield";
@@ -46,16 +45,6 @@ const STEPS: Record<BoundaryMode, { k: string; d: string }[]> = {
   ],
 };
 
-const STEP_LABEL: Record<OpStep, string> = {
-  unlock: "sign to unlock in your wallet",
-  wait: "waiting",
-  sync: "syncing the pool",
-  prove: "proving in your browser",
-  confirm: "confirm in your wallet",
-  mined: "landed",
-  record: "filing your note",
-};
-
 export default function BoundaryConfirmModal({
   open,
   mode,
@@ -71,16 +60,6 @@ export default function BoundaryConfirmModal({
   onClose,
 }: Props) {
   const [copied, setCopied] = useState(false);
-  const [, tick] = useState(0);
-
-  // A visible countdown needs a local heartbeat; the value it renders still
-  // comes from the end time the run published, never from counting frames.
-  const waitUntil = progress?.waitUntil;
-  useEffect(() => {
-    if (!waitUntil) return;
-    const id = setInterval(() => tick((n) => n + 1), 500);
-    return () => clearInterval(id);
-  }, [waitUntil]);
 
   if (!open) return null;
 
@@ -103,11 +82,6 @@ export default function BoundaryConfirmModal({
   const fromLabel = mode === "shield" ? "Public wallet" : "Shielded balance";
   const toLabel = mode === "shield" ? "Shielded balance" : "Public wallet";
   const verb = mode === "shield" ? "Shield" : "Unshield";
-
-  const fmtPart = (v: bigint) => {
-    const s = formatUnits(v, token.decimals);
-    return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
-  };
 
   return (
     <div
@@ -150,54 +124,7 @@ export default function BoundaryConfirmModal({
         {progress ? (
           /* ---- live run ---- */
           <div className="px-5 py-5 space-y-2">
-            {progress.parts.map((p, i) => {
-              const tx = progress.txs.find((t) => t.part === i);
-              // Filing happens after the money has moved, so the row keeps its
-              // hash and the footer carries the fact that work is still going.
-              const isCurrent =
-                i === progress.current && !progress.done && !progress.error && progress.step !== "record";
-              const isDone = !!tx;
-              const failedHere = !!progress.error && i === progress.current;
-              return (
-                <div key={i} className="bg-ink2 px-4 py-3 flex items-center justify-between gap-3">
-                  <span className="flex items-center gap-3 min-w-0">
-                    <span
-                      className={`shrink-0 h-6 w-6 flex items-center justify-center label-mono text-[0.62rem] ${
-                        isDone ? "bg-acid text-ink" : failedHere ? "bg-[#3a1414] text-[#ff6b6b]" : "bg-ink3 text-acid"
-                      }`}
-                    >
-                      {isDone ? "✓" : i + 1}
-                    </span>
-                    <span className="font-data text-sm text-bone whitespace-nowrap">
-                      {fmtPart(p)} {progress.symbol}
-                    </span>
-                  </span>
-                  <span className="text-right min-w-0">
-                    {isDone && tx ? (
-                      <a
-                        href={`${net.explorer}/tx/${tx.hash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-data text-xs text-acid hover:text-acid2"
-                      >
-                        {tx.hash.slice(0, 10)}… ↗
-                      </a>
-                    ) : failedHere ? (
-                      <span className="font-data text-xs text-[#ff6b6b]">failed</span>
-                    ) : isCurrent ? (
-                      <span className="font-data text-xs text-muted">
-                        <span className="inline-block h-2.5 w-2.5 mr-2 align-middle border-2 border-acid border-t-transparent rounded-full spin" />
-                        {progress.step === "wait" && progress.waitUntil
-                          ? `firing in ${formatRemaining(progress.waitUntil - Date.now())}`
-                          : STEP_LABEL[progress.step]}
-                      </span>
-                    ) : (
-                      <span className="font-data text-xs text-faint">waiting</span>
-                    )}
-                  </span>
-                </div>
-              );
-            })}
+            <RunProgress progress={progress} />
 
             {running && progress.step === "record" && (
               <p className="flex items-center gap-2 text-[0.7rem] text-muted leading-relaxed pt-1">

@@ -5,9 +5,11 @@
 // Unlocking asks the connected wallet for one deterministic signature over a
 // fixed domain message and derives the shielded keys from it, in memory only —
 // nothing secret ever persists. Once unlocked the provider syncs the pool's
-// event log, scans it with the view key, and exposes balances plus the two
-// real executors: shield (prove, then the wallet pays the deposit in) and
-// unshield (prove the join-split, submit through the wallet, value comes out).
+// event log, scans it with the view key, and exposes balances plus the three
+// real executors: shield (prove, then the wallet pays the deposit in),
+// unshield (prove the join-split, submit through the wallet, value comes out)
+// and send (the same join-split with no public leg, one output encrypted to
+// the recipient's view key instead of your own).
 //
 // Executors run one boundary part at a time: sync, prove against the current
 // root, confirm in the wallet, wait for the receipt, record. A revert from a
@@ -26,7 +28,12 @@ import {
 import { useAccount, useSignMessage, useWalletClient } from "wagmi";
 import { activeNetwork } from "@/lib/networks";
 import { planDelays } from "@/lib/spread";
-import { deriveShieldedKeysFromSignature, SHIELDED_SIGN_MESSAGE, type ShieldedKeys } from "@/lib/shielded/keys";
+import {
+  decodePaymentAddress,
+  deriveShieldedKeysFromSignature,
+  SHIELDED_SIGN_MESSAGE,
+  type ShieldedKeys,
+} from "@/lib/shielded/keys";
 import { commitment, newNote } from "@/lib/shielded/note";
 import { encryptNote, packCipher } from "@/lib/shielded/crypto";
 import { fieldToHex, hexToField } from "@/lib/shielded/field";
@@ -34,10 +41,12 @@ import { appendProof } from "@/lib/shielded/tree";
 import {
   applyScan,
   computeBalance,
+  planSend,
   planUnshield,
   recordMyNote,
   stashPendingNote,
   type Balance,
+  type Wallet,
 } from "@/lib/shielded/pool";
 import { loadPool, loadWallet, savePool, saveWallet } from "@/lib/shielded/store";
 import { syncShieldedPool } from "@/lib/shielded/sync";
@@ -51,7 +60,7 @@ export type ShieldedStatus = "locked" | "unlocking" | "ready";
 export type OpStep = "unlock" | "wait" | "sync" | "prove" | "confirm" | "mined" | "record";
 
 export type OpProgress = {
-  op: "shield" | "unshield";
+  op: "shield" | "unshield" | "send";
   symbol: string;
   decimals: number;
   parts: bigint[];
@@ -75,6 +84,8 @@ type ShieldedContextValue = {
   lock: () => void;
   refresh: () => Promise<void>;
   balanceOf: (tokenField: bigint) => bigint;
+  /** Most one spend can move for this token: a join-split reaches two notes, no more. */
+  sendableOf: (tokenField: bigint) => bigint;
   clearProgress: () => void;
   shieldExec: (args: {
     parts: bigint[];
@@ -91,6 +102,14 @@ type ShieldedContextValue = {
     symbol: string;
     decimals: number;
     spreadMs?: number | null;
+  }) => Promise<void>;
+  sendExec: (args: {
+    /** zcowl: payment address of the recipient. */
+    to: string;
+    value: bigint;
+    tokenField: bigint;
+    symbol: string;
+    decimals: number;
   }) => Promise<void>;
 };
 
@@ -142,6 +161,30 @@ async function holdFor(ms: number, prog: OpProgress, publish: () => void): Promi
   await new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * The ceiling on one spend, per token.
+ *
+ * A join-split reads at most two input notes, so a book scattered across many
+ * small ones can hold more than any single transfer can move. The screen needs
+ * this before it lets someone type an amount the circuit cannot carry.
+ */
+function sendableCaps(wallet: Wallet): { token: bigint; max: bigint }[] {
+  const by = new Map<string, bigint[]>();
+  for (const n of wallet.notes) {
+    if (n.spent) continue;
+    const v = hexToField(n.value);
+    if (v === 0n) continue;
+    by.set(n.token, [...(by.get(n.token) ?? []), v]);
+  }
+  return [...by.entries()].map(([token, values]) => ({
+    token: hexToField(token),
+    max: values
+      .sort((a, b) => (a < b ? 1 : -1))
+      .slice(0, 2)
+      .reduce((s, v) => s + v, 0n),
+  }));
+}
+
 /** True when a failure smells like the root moved under us — resync and reprove. */
 function isStaleRoot(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
@@ -157,6 +200,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   const [keys, setKeys] = useState<ShieldedKeys | null>(null);
   const [derivedFor, setDerivedFor] = useState<string | null>(null);
   const [balances, setBalances] = useState<Balance>([]);
+  const [sendable, setSendable] = useState<{ token: bigint; max: bigint }[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [progress, setProgress] = useState<OpProgress | null>(null);
 
@@ -171,6 +215,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       setDerivedFor(null);
       setStatus("locked");
       setBalances([]);
+      setSendable([]);
     }
   }, [address, keys, derivedFor]);
 
@@ -180,6 +225,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
     applyScan(pool, wallet, k);
     saveWallet(net.key, k, wallet);
     setBalances(computeBalance(wallet));
+    setSendable(sendableCaps(wallet));
   }, []);
 
   const refreshWith = useCallback(
@@ -236,6 +282,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
     setDerivedFor(null);
     setStatus("locked");
     setBalances([]);
+    setSendable([]);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -245,6 +292,11 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   const balanceOf = useCallback(
     (tokenField: bigint): bigint => balances.find((b) => b.token === tokenField)?.amount ?? 0n,
     [balances],
+  );
+
+  const sendableOf = useCallback(
+    (tokenField: bigint): bigint => sendable.find((s) => s.token === tokenField)?.max ?? 0n,
+    [sendable],
   );
 
   const clearProgress = useCallback(() => setProgress(null), []);
@@ -444,6 +496,100 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
     [ensureKeys, scanAndPublish],
   );
 
+  /**
+   * Pay a zcowl address out of the shielded book.
+   *
+   * The same join-split the boundary uses, with its public leg set to zero:
+   * nothing leaves the pool, so the chain sees two spent nullifiers and two
+   * fresh commitments and no amount, no asset and no parties. What separates a
+   * payment from change is only who each output is encrypted to — the
+   * recipient reads the first with their view key, you read the second with
+   * yours, and neither ciphertext tells the other apart from outside.
+   *
+   * One note in, one transaction, no denomination split: a private transfer
+   * publishes no amount to round off.
+   */
+  const sendExec = useCallback<ShieldedContextValue["sendExec"]>(
+    async ({ to, value, tokenField, symbol, decimals }) => {
+      const wc = walletClientRef.current;
+      if (!wc?.account) throw new Error("Connect a wallet first.");
+      // Malformed addresses die here, before a signature is asked for.
+      const recipient = decodePaymentAddress(to);
+
+      const prog: OpProgress = {
+        op: "send",
+        symbol,
+        decimals,
+        parts: [value],
+        current: 0,
+        step: "unlock",
+        txs: [],
+        done: false,
+      };
+      const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
+      publish();
+
+      try {
+        const k = await ensureKeys();
+        for (let attempt = 0; ; attempt++) {
+          prog.step = "sync";
+          publish();
+          const sync = await syncShieldedPool();
+          if (!sync) throw new Error(`No shielded pool on ${net.label}.`);
+          const wallet = loadWallet(net.key, k);
+          applyScan(sync.pool, wallet, k);
+          saveWallet(net.key, k, wallet);
+
+          const planned = planSend(
+            sync.pool,
+            wallet,
+            k,
+            recipient,
+            value,
+            tokenField,
+            BigInt(net.chainId),
+          );
+
+          prog.step = "prove";
+          publish();
+          const proof = await proveTransferOffThread(planned.plan);
+          const ciphertexts: [`0x${string}`, `0x${string}`] = [
+            packCipher(encryptNote(planned.outputs[0]!.note, planned.outputs[0]!.viewPubHex)),
+            packCipher(encryptNote(planned.outputs[1]!.note, planned.outputs[1]!.viewPubHex)),
+          ];
+
+          prog.step = "confirm";
+          publish();
+          try {
+            await simulateSpend(wc.account.address, proof.spend, ciphertexts, proof.proof);
+            const receipt = await submitSpend(wc, proof.spend, ciphertexts, proof.proof);
+
+            prog.step = "mined";
+            prog.txs.push({ hash: receipt.hash, part: 0 });
+            publish();
+
+            prog.step = "record";
+            publish();
+            await withDeadline(syncShieldedPool(), RECORD_DEADLINE).catch(() => null);
+            break;
+          } catch (e) {
+            if (isStaleRoot(e) && attempt < 2) continue; // root moved — replan
+            throw e;
+          }
+        }
+
+        scanAndPublish(k);
+        prog.done = true;
+        publish();
+      } catch (e) {
+        prog.error = opError(e);
+        publish();
+        throw e;
+      }
+    },
+    [ensureKeys, scanAndPublish],
+  );
+
   const value = useMemo<ShieldedContextValue>(
     () => ({
       status,
@@ -456,11 +602,28 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       lock,
       refresh,
       balanceOf,
+      sendableOf,
       clearProgress,
       shieldExec,
       unshieldExec,
+      sendExec,
     }),
-    [status, keys, balances, syncing, progress, unlock, lock, refresh, balanceOf, clearProgress, shieldExec, unshieldExec],
+    [
+      status,
+      keys,
+      balances,
+      syncing,
+      progress,
+      unlock,
+      lock,
+      refresh,
+      balanceOf,
+      sendableOf,
+      clearProgress,
+      shieldExec,
+      unshieldExec,
+      sendExec,
+    ],
   );
 
   return <ShieldedContext.Provider value={value}>{children}</ShieldedContext.Provider>;

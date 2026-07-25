@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { decompose, groupParts, MAX_BOUNDARY_TXS, tiersFor } from "@/lib/denominations";
-import { USD } from "@/lib/prices";
+import { formatBalance, USD } from "@/lib/prices";
 import type { useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
 import { useShielded } from "./ShieldedProvider";
@@ -175,7 +175,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         </button>
       ) : (
         <span>
-          {bal.toLocaleString("en-US", { maximumFractionDigits: 4 })} {token.symbol}
+          {formatBalance(bal)} {token.symbol}
         </span>
       )}
       {mode === "shield" && !!wallet.address && !balUnknown && (

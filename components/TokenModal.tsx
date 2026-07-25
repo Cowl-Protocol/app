@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatUnits, getAddress, isAddress } from "viem";
 import { TOKENS, type Token } from "@/lib/tokens";
 import { fetchTokenList } from "@/lib/tokenList";
+import { formatBalance } from "@/lib/prices";
 import { fetchBalance, publicClient } from "@/lib/useWallet";
 
 // Real token icon (self-hosted under /public/tokens), with a graceful fall back to
@@ -25,7 +26,15 @@ const GLYPH_BG: Record<string, string> = {
 function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
   const known = TOKENS.find((t) => t.symbol === symbol);
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
   const logo = src ?? known?.logoURI;
+
+  // An image served from cache can finish before React attaches onLoad, and
+  // that event never arrives — which left every cached icon showing its
+  // fallback initials. `complete` is the state the event would have announced.
+  useEffect(() => {
+    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) setLoaded(true);
+  }, [logo]);
 
   const initials = symbol.length <= 4 ? symbol : symbol.slice(0, 3);
   const size = initials.length >= 4 ? "text-[0.5rem]" : "text-[0.62rem]";
@@ -46,6 +55,7 @@ function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
       {logo && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
+          ref={imgRef}
           src={logo}
           alt={symbol}
           width={32}
@@ -363,9 +373,7 @@ function Row({
         </span>
       </span>
       {balance !== undefined ? (
-        <span className="font-data text-sm text-muted shrink-0">
-          {bal === 0 ? "0" : bal.toLocaleString("en-US", { maximumFractionDigits: 4 })}
-        </span>
+        <span className="font-data text-sm text-muted shrink-0">{formatBalance(bal)}</span>
       ) : token.holders ? (
         <span className="font-data text-[0.68rem] text-faint shrink-0">
           {Intl.NumberFormat("en-US", { notation: "compact" }).format(token.holders)} holders

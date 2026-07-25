@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
-import { USD } from "@/lib/prices";
+import { formatBalance, USD } from "@/lib/prices";
 import type { useWallet } from "@/lib/useWallet";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import ConfirmModal from "./ConfirmModal";
@@ -283,7 +283,7 @@ function Panel({
         {balance !== undefined && (
           <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
             <span>
-              {parseFloat(balance).toLocaleString("en-US", { maximumFractionDigits: 4 })} {token.symbol}
+              {formatBalance(parseFloat(balance))} {token.symbol}
             </span>
             {showMax && (
               <button onClick={onMax} className="text-acid hover:text-acid2 font-data text-[0.65rem]">

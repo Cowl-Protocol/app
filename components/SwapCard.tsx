@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
-import { formatBalance, USD } from "@/lib/prices";
+import { formatBalance } from "@/lib/prices";
 import type { useWallet } from "@/lib/useWallet";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import ConfirmModal from "./ConfirmModal";
@@ -15,11 +15,9 @@ type WalletState = ReturnType<typeof useWallet>;
 // with the shielded boundary and the CLI carrying the live flows.
 const LIVE = false;
 
-// Cross-rate between the shared USD anchors = from-USD / to-USD.
-function rate(from: string, to: string): number {
-  const f = USD[from] ?? 0;
-  const t = USD[to] ?? 0;
-  return t === 0 ? 0 : f / t;
+// Rates land with the on-chain quoter, alongside the panel going live.
+function rate(_from: string, _to: string): number {
+  return 0;
 }
 
 function fmt(n: number, max = 6): string {
@@ -133,7 +131,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           amount={amount}
           editable={LIVE}
           onAmount={setAmount}
-          usd={amt * (USD[pay.symbol] ?? 0)}
+          usd={null}
           balance={payBal ?? undefined}
           showMax={LIVE && !!wallet.address}
           onMax={() => setAmount(payBal ?? "0")}
@@ -157,7 +155,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           title="You receive"
           token={receive}
           amount={out === 0 ? "" : fmt(out)}
-          usd={out * (USD[receive.symbol] ?? 0)}
+          usd={null}
           onPick={LIVE ? () => setPicking("receive") : undefined}
         />
 
@@ -270,7 +268,7 @@ function Panel({
   amount: string;
   editable?: boolean;
   onAmount?: (v: string) => void;
-  usd: number;
+  usd: string | null;
   balance?: string;
   showMax?: boolean;
   onMax?: () => void;
@@ -315,9 +313,7 @@ function Panel({
           {onPick && <span className="text-faint text-xs">▾</span>}
         </button>
       </div>
-      <div className="mt-2 text-[0.7rem] text-faint font-data">
-        ${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
-      </div>
+      {usd && <div className="mt-2 text-[0.7rem] text-faint font-data">{usd}</div>}
     </div>
   );
 }

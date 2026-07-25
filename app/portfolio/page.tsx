@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { formatUnits } from "viem";
 import { useWallet, shortAddr } from "@/lib/useWallet";
 import { TOKENS, tokenMetaForField } from "@/lib/tokens";
-import { formatBalance, formatUnitsExact, USD } from "@/lib/prices";
+import { formatBalance, formatUnitsExact, useNativePrice, usdOf } from "@/lib/prices";
 import { usePoolStats } from "@/lib/pool";
 import { useShielded } from "@/components/ShieldedProvider";
 import Header from "@/components/Header";
@@ -71,8 +71,12 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
     };
   }, [walletAddress, getBalance]);
 
+  const nativePrice = useNativePrice();
+  const priceOf = (t: (typeof TOKENS)[number]) => (t.native ? nativePrice : (t.priceUsd ?? null));
+  // Only priced holdings count toward the total, so it never quietly includes
+  // a token valued at a number nobody supplied.
   const total = TOKENS.reduce(
-    (sum, t) => sum + (parseFloat(balances[t.symbol] ?? "0") || 0) * (USD[t.symbol] ?? 0),
+    (sum, t) => sum + (parseFloat(balances[t.symbol] ?? "0") || 0) * (priceOf(t) ?? 0),
     0,
   );
 
@@ -96,7 +100,9 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
           <div className="bg-ink2 p-4 mb-1">
             <p className="label-soft text-faint mb-1.5">Total value</p>
             <p className="font-data text-3xl text-bone tracking-tight">
-              ${total.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+              {nativePrice === null
+                ? "—"
+                : `$${total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </p>
             <p className="text-[0.7rem] text-faint mt-1.5">
               Visible to anyone with your address. That&apos;s this side of the ledger.
@@ -120,7 +126,7 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
                           {formatBalance(balances[t.symbol] ?? "0")}
                         </span>
                         <span className="text-xs text-faint font-data">
-                          ${fmt(bal * (USD[t.symbol] ?? 0), 2)}
+                          {usdOf(bal, priceOf(t)) ?? ""}
                         </span>
                       </>
                     ) : (

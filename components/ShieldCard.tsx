@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { decompose, groupParts, MAX_BOUNDARY_TXS, tiersFor } from "@/lib/denominations";
-import { formatBalance, formatUnitsExact, USD } from "@/lib/prices";
+import { formatBalance, formatUnitsExact, useNativePrice, usdOf } from "@/lib/prices";
 import { parseWindow } from "@/lib/spread";
 import { shortAddr, type useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
@@ -114,8 +114,10 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     setAmount("");
   };
 
-  // Listed tokens carry a live USD price off the explorer; the anchors cover the rest.
-  const usd = amt * (token.priceUsd ?? USD[token.symbol] ?? 0);
+  // The native coin is priced by the explorer's stats, listed tokens by the
+  // token list. A token with neither shows no USD line rather than a made-up one.
+  const nativePrice = useNativePrice();
+  const usd = usdOf(amt, token.native ? nativePrice : (token.priceUsd ?? null));
 
   const unlock = async () => {
     setUnlockError(null);
@@ -272,9 +274,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               <span className="text-faint text-xs">▾</span>
             </button>
           </div>
-          <div className="mt-2 text-[0.7rem] text-faint font-data">
-            ${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}
-          </div>
+          {usd && <div className="mt-2 text-[0.7rem] text-faint font-data">{usd}</div>}
         </div>
 
         {/* Flip */}

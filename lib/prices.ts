@@ -1,12 +1,70 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { formatUnits } from "viem";
+import { activeNetwork } from "./networks";
 
-// Indicative USD anchors for the testnet venue — real routing quotes land when
-// the on-chain quoter is wired to the panels. Shared by the swap card, the
-// shield card and the portfolio so every surface prices the same way.
-export const USD: Record<string, number> = { ETH: 3000, WETH: 3000, USDG: 1, COWL: 0.5 };
+// USD pricing.
+//
+// The native coin's price comes from the explorer's own stats endpoint, and
+// listed tokens carry theirs in the token list. Nothing is hardcoded: a fixed
+// anchor reads as a real valuation while quietly drifting from the market,
+// which is how a wallet holding $32 of ETH came to be shown as $52.
+//
+// A price that cannot be fetched is left absent rather than guessed, and the
+// USD line simply does not render. An invented valuation is worse than none.
 
-export function usdValue(symbol: string, amount: number): number {
-  return (USD[symbol] ?? 0) * amount;
+const TTL = 5 * 60 * 1000;
+
+type Cached = { at: number; price: number };
+let memo: Cached | null = null;
+let memoKey = "";
+let inflight: Promise<number | null> | null = null;
+
+/** USD price of the network's native coin, or null when it isn't available. */
+export async function fetchNativePrice(): Promise<number | null> {
+  const net = activeNetwork();
+  if (memo && memoKey === net.key && Date.now() - memo.at < TTL) return memo.price;
+  if (inflight) return inflight;
+
+  inflight = (async () => {
+    try {
+      const res = await fetch(`${net.explorer}/api/v2/stats`);
+      if (!res.ok) return null;
+      const data = (await res.json()) as { coin_price?: string | number | null };
+      const price = Number(data.coin_price);
+      if (!isFinite(price) || price <= 0) return null;
+      memo = { at: Date.now(), price };
+      memoKey = net.key;
+      return price;
+    } catch {
+      return null;
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
+}
+
+/** The native coin's USD price once it lands; null until then, and if it never does. */
+export function useNativePrice(): number | null {
+  const [price, setPrice] = useState<number | null>(memo?.price ?? null);
+  useEffect(() => {
+    let alive = true;
+    fetchNativePrice().then((p) => {
+      if (alive) setPrice(p);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return price;
+}
+
+/** A USD amount, or null when the price behind it is unknown. */
+export function usdOf(amount: number, price: number | null): string | null {
+  if (price === null || !isFinite(amount)) return null;
+  return `$${(amount * price).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /**

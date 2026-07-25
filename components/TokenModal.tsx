@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAddress, isAddress } from "viem";
 import { TOKENS, type Token } from "@/lib/tokens";
 import { fetchTokenList } from "@/lib/tokenList";
@@ -19,22 +19,25 @@ const GLYPH_BG: Record<string, string> = {
 };
 
 /**
- * Token mark: the symbol set in type, with the hosted icon layered over it once
- * it actually loads. Written this way on purpose — several issuers host their
- * logos on CDNs that hang rather than fail for some visitors, and an icon that
- * never resolves would otherwise leave an empty disc with no onError to catch.
+ * Token mark: the symbol set in type, with the hosted icon over it.
+ *
+ * The icon is shown by default and removed only if it actively fails, which is
+ * the opposite of the obvious design and the only one that holds. Waiting for
+ * an onLoad before revealing the image loses every icon whose load finished
+ * before React attached the handler, and an image served from cache almost
+ * always does — the icons were arriving intact and staying invisible. A
+ * pending image draws nothing, so the letters underneath cover the wait, and
+ * a broken one is pulled out before the browser can draw its placeholder over
+ * them. That matters here because several issuers host their logos on CDNs
+ * that hang rather than fail for part of the world.
  */
 function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
   const known = TOKENS.find((t) => t.symbol === symbol);
-  const [loaded, setLoaded] = useState(false);
-  const imgRef = useRef<HTMLImageElement>(null);
+  const [failed, setFailed] = useState(false);
   const logo = src ?? known?.logoURI;
 
-  // An image served from cache can finish before React attaches onLoad, and
-  // that event never arrives — which left every cached icon showing its
-  // fallback initials. `complete` is the state the event would have announced.
   useEffect(() => {
-    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) setLoaded(true);
+    setFailed(false);
   }, [logo]);
 
   const initials = symbol.length <= 4 ? symbol : symbol.slice(0, 3);
@@ -47,7 +50,7 @@ function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
   return (
     <span className="relative inline-flex h-8 w-8 shrink-0 overflow-hidden rounded-full">
       <span
-        className={`absolute inset-0 rounded-full flex items-center justify-center font-data tracking-tight ${size}`}
+        className={`absolute inset-0 flex items-center justify-center font-data tracking-tight ${size}`}
         style={{
           background: GLYPH_BG[symbol] ?? "#1c2027",
           color: fg,
@@ -56,18 +59,15 @@ function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
       >
         {initials}
       </span>
-      {logo && (
+      {logo && !failed && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          ref={imgRef}
           src={logo}
-          alt={symbol}
+          alt=""
           width={32}
           height={32}
-          onLoad={() => setLoaded(true)}
-          className={`absolute inset-0 h-8 w-8 rounded-full object-cover transition-opacity duration-200 ${
-            loaded ? "opacity-100" : "opacity-0"
-          }`}
+          onError={() => setFailed(true)}
+          className="absolute inset-0 h-8 w-8 object-cover"
         />
       )}
     </span>

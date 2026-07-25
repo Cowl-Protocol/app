@@ -375,6 +375,17 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             )}
             {exact && <Row k="Boundary" v="exact amount · 1 transaction" />}
             {spread && <Row k="Spread" v={`${spread} window · random moments · keep this tab open`} />}
+            {/* Every part is its own transaction, so it is its own signature.
+                Worth saying up front: a plan that splits into six is six trips
+                to the wallet, and behind a spread they arrive minutes apart. */}
+            <Row
+              k="Wallet confirmations"
+              v={
+                execParts.length === 1
+                  ? "1"
+                  : `${execParts.length}${spread ? ", at random moments" : ", back to back"}`
+              }
+            />
             <Row k="Proving" v="In your browser" accent />
             <Row k="Gas payer" v={mode === "shield" ? "You, per deposit" : "You, per withdrawal"} />
           </div>

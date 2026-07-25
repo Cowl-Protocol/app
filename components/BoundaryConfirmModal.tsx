@@ -273,6 +273,12 @@ export default function BoundaryConfirmModal({
               </div>
             )}
             <div className="flex items-center justify-between text-xs">
+              <span className="text-faint font-data">Wallet confirmations</span>
+              <span className="font-data text-muted text-right">
+                {parts.length === 1 ? "1" : `${parts.length}${spread ? ", at random moments" : ", back to back"}`}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
               <span className="text-faint font-data">Gas payer</span>
               <span className="font-data text-muted">
                 {mode === "shield" ? "You, per deposit" : "You, per withdrawal"}

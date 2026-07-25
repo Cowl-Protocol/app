@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { decompose, groupParts, MAX_BOUNDARY_TXS, tiersFor } from "@/lib/denominations";
-import { formatBalance, formatUnitsExact, useNativePrice, usdOf } from "@/lib/prices";
+import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
+import { useTokenPrice } from "@/lib/tokenPrice";
 import { parseWindow } from "@/lib/spread";
 import { shortAddr, type useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
@@ -114,10 +115,10 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     setAmount("");
   };
 
-  // The native coin is priced by the explorer's stats, listed tokens by the
-  // token list. A token with neither shows no USD line rather than a made-up one.
-  const nativePrice = useNativePrice();
-  const usd = usdOf(amt, token.native ? nativePrice : (token.priceUsd ?? null));
+  // Priced off the venue's own pools, whatever the token is — including one
+  // pasted in a minute ago. No price, no USD line.
+  const price = useTokenPrice(token);
+  const usd = usdOf(amt, price);
 
   const unlock = async () => {
     setUnlockError(null);

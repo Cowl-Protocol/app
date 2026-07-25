@@ -20,13 +20,27 @@ function isExplorerEndpoint(url: string): boolean {
  * Falling through to the next endpoint on it would be wrong twice over: the
  * next one is no likelier to serve the range, and by the time the last one has
  * also declined, the message the caller sees belongs to whichever endpoint
- * happened to be last — so the log reader can no longer tell a range cap from
- * an outage, and never splits the range it was being told to split. Surfacing
- * it immediately keeps the cap legible to fetchPoolEvents, which then refetches
- * in windows against this same transport.
+ * happened to be last — so the log reader can no longer tell a cap from an
+ * outage, and never splits the range it was being told to split.
  */
-function isRangeCap(error: Error): boolean {
-  return /limit|range|exceed|too (?:many|large|broad)/i.test(error.message);
+function isRangeCap(message: string): boolean {
+  return /limit|range|exceed|too (?:many|large|broad)/i.test(message);
+}
+
+/**
+ * A revert is the chain's answer, not an endpoint's failure.
+ *
+ * Asking a second node produces the same revert, so trying the rest of the
+ * list only spends their timeouts and retries — which is what turned a token
+ * price into a minute of waiting, since pricing quotes every fee tier and most
+ * tiers have no pool to quote against.
+ */
+function isChainAnswer(message: string): boolean {
+  return /execution reverted|reverted with|invalid opcode|out of gas|EstimateGas/i.test(message);
+}
+
+function surfaceImmediately(error: Error): boolean {
+  return isRangeCap(error.message) || isChainAnswer(error.message);
 }
 
 export function transportFor(net: NetworkDef) {
@@ -36,6 +50,6 @@ export function transportFor(net: NetworkDef) {
         ? http(url, { timeout: 30_000, retryCount: 3, retryDelay: 3_000 })
         : http(url, { timeout: 8_000, retryCount: 1 }),
     ),
-    { shouldThrow: isRangeCap },
+    { shouldThrow: surfaceImmediately },
   );
 }

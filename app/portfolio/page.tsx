@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { formatUnits } from "viem";
 import { useWallet, shortAddr } from "@/lib/useWallet";
 import { TOKENS, tokenMetaForField } from "@/lib/tokens";
-import { formatBalance, formatUnitsExact, useNativePrice, usdOf } from "@/lib/prices";
+import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
+import { fetchTokenPriceUsd } from "@/lib/tokenPrice";
 import { usePoolStats } from "@/lib/pool";
 import { useShielded } from "@/components/ShieldedProvider";
 import Header from "@/components/Header";
@@ -71,14 +72,25 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
     };
   }, [walletAddress, getBalance]);
 
-  const nativePrice = useNativePrice();
-  const priceOf = (t: (typeof TOKENS)[number]) => (t.native ? nativePrice : (t.priceUsd ?? null));
+  const [prices, setPrices] = useState<Record<string, number | null>>({});
+  useEffect(() => {
+    let alive = true;
+    Promise.all(TOKENS.map(async (t) => [t.symbol, await fetchTokenPriceUsd(t)] as const)).then((rows) => {
+      if (alive) setPrices(Object.fromEntries(rows));
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const priceOf = (t: (typeof TOKENS)[number]) => prices[t.symbol] ?? null;
   // Only priced holdings count toward the total, so it never quietly includes
   // a token valued at a number nobody supplied.
   const total = TOKENS.reduce(
     (sum, t) => sum + (parseFloat(balances[t.symbol] ?? "0") || 0) * (priceOf(t) ?? 0),
     0,
   );
+  const anyPriced = TOKENS.some((t) => priceOf(t) !== null);
 
   return (
     <div className="bg-card p-5 fade-up">
@@ -100,7 +112,7 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
           <div className="bg-ink2 p-4 mb-1">
             <p className="label-soft text-faint mb-1.5">Total value</p>
             <p className="font-data text-3xl text-bone tracking-tight">
-              {nativePrice === null
+              {!anyPriced
                 ? "—"
                 : `$${total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </p>

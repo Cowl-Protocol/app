@@ -12,13 +12,13 @@ export default function Banner() {
       <div className="relative px-6 md:px-10 py-2.5 flex items-center justify-center gap-3 text-center">
         <MaskLogo className="h-2.5 w-auto text-acid shrink-0" />
         <p className="label-mono text-[0.62rem] leading-relaxed">
-          <span className="text-acid">Coming soon</span>
-          <span className="text-muted"> · Private swaps in the app are on the way. Trade shielded today with the </span>
+          <span className="text-acid">Live</span>
+          <span className="text-muted"> · Shield and unshield run in your browser now. Your keys never leave the tab. </span>
           <a
-            href="https://cowlprotocol.com/docs"
+            href="/shield"
             className="text-bone hover:text-acid transition-colors"
           >
-            cowl CLI →
+            Open the shield →
           </a>
         </p>
         <button

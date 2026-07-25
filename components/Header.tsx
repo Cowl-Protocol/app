@@ -16,6 +16,7 @@ const LINKS = [
   { href: "/send", label: "Send", soon: true },
   { href: "/receive", label: "Receive", soon: true },
   { href: "/portfolio", label: "Portfolio" },
+  { href: "/rewards", label: "Rewards", soon: true },
 ];
 
 const DOCS = "https://cowlprotocol.com/docs";

@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { formatUnits } from "viem";
+import { useState } from "react";
 import { useWallet, shortAddr } from "@/lib/useWallet";
-import { TOKENS, tokenMetaForField, type Token } from "@/lib/tokens";
-import { useHoldings } from "@/lib/holdings";
-import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
-import { fetchTokenPriceUsd } from "@/lib/tokenPrice";
+import { tokenMetaForField } from "@/lib/tokens";
+import { useAssets, totalUsd } from "@/lib/assets";
+import AssetRow from "@/components/AssetRow";
+import { formatUnitsExact } from "@/lib/prices";
 import { usePoolStats } from "@/lib/pool";
 import { useShielded } from "@/components/ShieldedProvider";
 import Header from "@/components/Header";
@@ -54,61 +53,10 @@ export default function Portfolio() {
 }
 
 function PublicCard({ wallet }: { wallet: WalletState }) {
-  const { address: walletAddress, getBalance } = wallet;
-
-  // The native coin is read from the chain; everything else is whatever the
-  // address is discovered to hold, so a wallet with tokenized Apple in it shows
-  // tokenized Apple without anyone pasting a contract address first.
-  const { holdings, loading } = useHoldings(walletAddress as `0x${string}` | null);
-  const native = TOKENS[0]!;
-
-  // null = the read failed, which is not the same as zero.
-  const [nativeBal, setNativeBal] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    if (!walletAddress) {
-      setNativeBal(null);
-      return;
-    }
-    getBalance(native).then((b) => {
-      if (alive) setNativeBal(b);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [walletAddress, getBalance, native]);
-
-  const rows: { token: Token; amount: string; rate: number | null }[] = [
-    { token: native, amount: nativeBal ?? "0", rate: null },
-    ...holdings.map((h) => ({
-      token: h.token,
-      amount: formatUnits(h.value, h.token.decimals),
-      rate: h.rate,
-    })),
-  ];
-
-  const [prices, setPrices] = useState<Record<string, number | null>>({});
-  useEffect(() => {
-    let alive = true;
-    Promise.all(
-      rows.map(async (r) => {
-        const key = r.token.native ? "native" : r.token.address.toLowerCase();
-        return [key, await fetchTokenPriceUsd(r.token, r.rate)] as const;
-      }),
-    ).then((entries) => {
-      if (alive) setPrices(Object.fromEntries(entries));
-    });
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletAddress, holdings.length]);
-
-  const priceOf = (t: Token) => prices[t.native ? "native" : t.address.toLowerCase()] ?? null;
-  // Only priced holdings count toward the total, so it never quietly includes
-  // a token valued at a number nobody supplied.
-  const total = rows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0) * (priceOf(r.token) ?? 0), 0);
-  const anyPriced = rows.some((r) => priceOf(r.token) !== null);
+  // The same assets the picker offers, read the same way — one source, so a
+  // balance can never be right on one screen and blank on the other.
+  const { assets, loading } = useAssets(wallet.address as `0x${string}` | null);
+  const { total, priced } = totalUsd(assets);
 
   return (
     <div className="bg-card p-5 fade-up">
@@ -130,40 +78,18 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
           <div className="bg-ink2 p-4 mb-1">
             <p className="label-soft text-faint mb-1.5">Total value</p>
             <p className="font-data text-3xl text-bone tracking-tight">
-              {!anyPriced
-                ? "—"
-                : `$${total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              {priced
+                ? `$${total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : "—"}
             </p>
             <p className="text-[0.7rem] text-faint mt-1.5">
               Visible to anyone with your address. That&apos;s this side of the ledger.
             </p>
           </div>
           <div>
-            {rows.map((r) => {
-              const known = !r.token.native || nativeBal !== null;
-              const bal = parseFloat(r.amount) || 0;
-              return (
-                <div key={r.token.address} className="flex items-center gap-3 px-1 py-3">
-                  <TokenGlyph symbol={r.token.symbol} src={r.token.logoURI} />
-                  <span className="flex flex-col flex-1 min-w-0">
-                    <span className="text-sm text-bone truncate">{r.token.symbol}</span>
-                    <span className="text-xs text-faint truncate">{r.token.name}</span>
-                  </span>
-                  <span className="flex flex-col items-end shrink-0">
-                    {known ? (
-                      <>
-                        <span className="font-data text-sm text-bone">{formatBalance(r.amount)}</span>
-                        <span className="text-xs text-faint font-data">
-                          {usdOf(bal, priceOf(r.token)) ?? ""}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="font-data text-xs text-faint">unavailable</span>
-                    )}
-                  </span>
-                </div>
-              );
-            })}
+            {assets.map((a) => (
+              <AssetRow key={a.token.address} asset={a} />
+            ))}
             {loading && <p className="px-1 py-2 text-xs text-faint">Looking for your tokens…</p>}
           </div>
         </>

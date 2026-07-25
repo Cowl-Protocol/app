@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { formatUnits, getAddress, isAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 import { TOKENS, type Token } from "@/lib/tokens";
 import { fetchTokenList } from "@/lib/tokenList";
-import { fetchHoldings } from "@/lib/holdings";
-import { formatUnitsExact } from "@/lib/prices";
-import { fetchBalance, publicClient } from "@/lib/useWallet";
+import { useAssets, type Asset } from "@/lib/assets";
+import AssetRow from "./AssetRow";
+import { publicClient } from "@/lib/useWallet";
 
 // Real token icon (self-hosted under /public/tokens), with a graceful fall back to
 // the coloured initials glyph if the image is missing, failing, or the token is a
@@ -124,12 +124,13 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   const [q, setQ] = useState("");
   const [imported, setImported] = useState<Token[]>([]);
   const [listed, setListed] = useState<Token[]>([]);
-  const [held, setHeld] = useState<Token[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [lookup, setLookup] = useState<Lookup>({ state: "idle" });
-  // Base units per token address; a token missing from the map is one whose
-  // read failed, which the row shows as nothing rather than as zero.
-  const [balances, setBalances] = useState<Record<string, bigint>>({});
+
+  // The wallet's own assets, balances and prices included, from the same source
+  // the portfolio reads. A token discovered a moment ago arrives with its
+  // balance attached rather than needing a second pass to fill it in.
+  const { assets } = useAssets(open ? (owner ?? null) : null);
 
   useEffect(() => {
     if (open && allowImport) setImported(loadImported());
@@ -151,60 +152,27 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
     };
   }, [open, allowImport]);
 
-  // Anything the wallet already holds is pinned alongside the curated set: a
-  // token you own is one you are likely to shield, and having to paste its
-  // address first is a poor way to find out you own it.
-  useEffect(() => {
-    if (!open || !owner) {
-      setHeld([]);
-      return;
-    }
-    let alive = true;
-    fetchHoldings(owner).then((h) => {
-      if (alive) setHeld(h.map((x) => x.token));
-    });
-    return () => {
-      alive = false;
-    };
-  }, [open, owner]);
-
+  // Pinned = the wallet's assets, the curated boundary set, and anything
+  // imported by hand. The live chain list follows underneath.
   const base = tokens ?? TOKENS;
+  const byAddress = new Map<string, Asset>();
+  for (const a of assets) byAddress.set(a.token.address.toLowerCase(), a);
+  const asAsset = (t: Token): Asset =>
+    byAddress.get(t.address.toLowerCase()) ?? { token: t, balance: null, price: null };
+
   const seen = new Set<string>();
-  const pinned = [...base, ...held, ...imported].filter((t) => {
-    const key = t.address.toLowerCase();
+  const pinned: Asset[] = [...base.map(asAsset), ...assets, ...imported.map(asAsset)].filter((a) => {
+    const key = a.token.address.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
   const known = [
     ...pinned,
-    ...listed.filter((l) => !pinned.some((p) => p.address.toLowerCase() === l.address.toLowerCase())),
+    ...listed
+      .filter((l) => !seen.has(l.address.toLowerCase()))
+      .map((l) => ({ token: l, balance: null, price: null }) as Asset),
   ];
-
-  // Balances load for the pinned set only; the live list would be hundreds of
-  // calls, and its rows carry holder counts instead.
-  useEffect(() => {
-    if (!open || !owner) {
-      setBalances({});
-      return;
-    }
-    let alive = true;
-    Promise.all(
-      pinned.map(async (t) => {
-        try {
-          return [t.address, await fetchBalance(owner, t)] as const;
-        } catch {
-          return null;
-        }
-      }),
-    ).then((rows) => {
-      if (alive) setBalances(Object.fromEntries(rows.filter((r) => r !== null)));
-    });
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, owner, imported]);
 
   // A pasted address that isn't already listed gets read straight off the chain.
   useEffect(() => {
@@ -213,7 +181,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
       setLookup({ state: "idle" });
       return;
     }
-    const alreadyListed = known.some((t) => t.address.toLowerCase() === addr.toLowerCase());
+    const alreadyListed = known.some((a) => a.token.address.toLowerCase() === addr.toLowerCase());
     if (alreadyListed) {
       setLookup({ state: "idle" });
       return;
@@ -243,22 +211,23 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   if (!open) return null;
 
   const needle = q.trim().toLowerCase();
-  const matches = (t: Token) =>
+  const matches = ({ token: t }: Asset) =>
     t.symbol !== exclude &&
     (t.symbol.toLowerCase().includes(needle) ||
       t.name.toLowerCase().includes(needle) ||
       t.address.toLowerCase() === needle);
 
+  // What you hold rises to the top; the rest of the curated set follows.
   const pinnedRows = pinned.filter(matches).sort((a, b) => {
-    const av = balances[a.address] ?? 0n;
-    const bv = balances[b.address] ?? 0n;
+    const av = a.balance ?? 0n;
+    const bv = b.balance ?? 0n;
     return bv === av ? 0 : bv > av ? 1 : -1;
   });
-  const listedRows = known.filter((t) => !pinned.includes(t)).filter(matches);
+  const listedRows = known.filter((a) => !pinned.includes(a)).filter(matches);
   const list = [...pinnedRows, ...listedRows];
 
-  const choose = (t: Token) => {
-    onSelect(t);
+  const choose = (a: Asset) => {
+    onSelect(a.token);
     onClose();
   };
 
@@ -300,8 +269,8 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
               {allowImport && (
                 <p className="label-soft text-faint px-5 pt-1 pb-2 sticky top-0 bg-card z-10">Boundary assets</p>
               )}
-              {pinnedRows.map((t) => (
-                <Row key={`${t.symbol}-${t.address}`} token={t} balance={balances[t.address]} onPick={choose} />
+              {pinnedRows.map((a) => (
+                <AssetRow key={a.token.address} asset={a} onPick={choose} showAddress />
               ))}
             </>
           )}
@@ -309,8 +278,18 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
           {listedRows.length > 0 && (
             <>
               <p className="label-soft text-faint px-5 pt-3 pb-2 sticky top-0 bg-card z-10">Tokens by holders</p>
-              {listedRows.map((t) => (
-                <Row key={`${t.symbol}-${t.address}`} token={t} onPick={choose} />
+              {listedRows.map((a) => (
+                <AssetRow
+                  key={a.token.address}
+                  asset={a}
+                  onPick={choose}
+                  showAddress
+                  trailing={
+                    a.token.holders
+                      ? `${Intl.NumberFormat("en-US", { notation: "compact" }).format(a.token.holders)} holders`
+                      : undefined
+                  }
+                />
               ))}
             </>
           )}
@@ -347,60 +326,5 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
         </div>
       </div>
     </div>
-  );
-}
-
-// Robinhood's tokenized assets all carry the same suffix on chain. The row shows
-// the asset itself and marks the class, so the name isn't spent on boilerplate.
-const TOKENIZED_MARK = " \u2022 Robinhood Token";
-
-function isTokenized(name: string): boolean {
-  return name.endsWith(TOKENIZED_MARK);
-}
-
-function displayName(name: string): string {
-  return isTokenized(name) ? name.slice(0, -TOKENIZED_MARK.length) : name;
-}
-
-function Row({
-  token,
-  balance,
-  onPick,
-}: {
-  token: Token;
-  balance?: bigint;
-  onPick: (t: Token) => void;
-}) {
-  const bal = balance === undefined ? "0" : formatUnitsExact(balance, token.decimals);
-  return (
-    <button
-      onClick={() => onPick(token)}
-      className="w-full flex items-center gap-3 px-5 py-2.5 hover:bg-ink3 transition-colors text-left"
-    >
-      <TokenGlyph symbol={token.symbol} src={token.logoURI} />
-      <span className="flex flex-col flex-1 min-w-0">
-        <span className="flex items-center gap-2 min-w-0">
-          <span className="text-sm text-bone truncate">{displayName(token.name)}</span>
-          {isTokenized(token.name) && (
-            <span className="label-soft text-[0.55rem] text-acid bg-[#161a10] px-1.5 py-0.5 shrink-0">RWA</span>
-          )}
-        </span>
-        <span className="flex items-center gap-2 min-w-0">
-          <span className="text-xs text-faint">{token.symbol}</span>
-          {!token.native && (
-            <span className="font-data text-[0.65rem] text-faint/70 truncate">
-              {token.address.slice(0, 6)}…{token.address.slice(-4)}
-            </span>
-          )}
-        </span>
-      </span>
-      {balance !== undefined ? (
-        <span className="font-data text-sm text-muted shrink-0">{bal}</span>
-      ) : token.holders ? (
-        <span className="font-data text-[0.68rem] text-faint shrink-0">
-          {Intl.NumberFormat("en-US", { notation: "compact" }).format(token.holders)} holders
-        </span>
-      ) : null}
-    </button>
   );
 }

@@ -7,6 +7,10 @@
 // the tape and no denomination plan to make one crossing look like another.
 // What a sender needs is the recipient's zcowl address, and what a recipient
 // needs is to hand that address out. The two tabs are exactly those halves.
+//
+// Each half is its own route (/send, /receive) and the tabs are links, so the
+// tab you are on always has an address you can hand to someone. Being paid is
+// the half people share.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatUnits, parseUnits } from "viem";
@@ -22,7 +26,12 @@ import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
 
 type WalletState = ReturnType<typeof useWallet>;
-type Tab = "send" | "receive";
+export type Tab = "send" | "receive";
+
+const TABS: { key: Tab; label: string; href: string }[] = [
+  { key: "send", label: "Send", href: "/send" },
+  { key: "receive", label: "Receive", href: "/receive" },
+];
 
 // Private payments open in the app once the flow has carried real value
 // through the live pool. Until then the card shows the shape of a send and
@@ -38,9 +47,8 @@ function logoFor(field: bigint): string | undefined {
   return TOKENS.find((t) => !t.native && !/^0x0{40}$/i.test(t.address) && BigInt(t.address) === field)?.logoURI;
 }
 
-export default function SendCard({ wallet }: { wallet: WalletState }) {
+export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Tab }) {
   const shielded = useShielded();
-  const [tab, setTab] = useState<Tab>("send");
   const [selected, setSelected] = useState<bigint | null>(null);
   const [amount, setAmount] = useState("");
   const [to, setTo] = useState("");
@@ -162,17 +170,24 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
         {/* Header row */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
-            {(["send", "receive"] as Tab[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`label-mono text-[0.72rem] transition-colors ${
-                  tab === t ? "text-bone border-b border-acid pb-0.5" : "text-faint hover:text-muted"
-                }`}
-              >
-                {t === "send" ? "Send" : "Receive"}
-              </button>
-            ))}
+            {TABS.map((t) =>
+              t.key === tab ? (
+                <span
+                  key={t.key}
+                  className="label-mono text-[0.72rem] text-bone border-b border-acid pb-0.5"
+                >
+                  {t.label}
+                </span>
+              ) : (
+                <Link
+                  key={t.key}
+                  href={t.href}
+                  className="label-mono text-[0.72rem] text-faint hover:text-muted transition-colors"
+                >
+                  {t.label}
+                </Link>
+              ),
+            )}
           </div>
           <span className="flex items-center gap-2">
             <InfoTip

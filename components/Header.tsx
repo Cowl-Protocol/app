@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/", label: "Swap", soon: true },
   { href: "/shield", label: "Shield" },
   { href: "/send", label: "Send", soon: true },
+  { href: "/receive", label: "Receive", soon: true },
   { href: "/portfolio", label: "Portfolio" },
 ];
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { iconIsDead, iconsServerVersion, iconsVersion, markIconDead, subscribeIcons } from "@/lib/iconStore";
 import { getAddress, isAddress } from "viem";
 import { TOKENS, type Token } from "@/lib/tokens";
 import { fetchTokenList } from "@/lib/tokenList";
@@ -21,24 +22,28 @@ const GLYPH_BG: Record<string, string> = {
 /**
  * Token mark: the symbol set in type, with the hosted icon over it.
  *
- * The icon is shown by default and removed only if it actively fails, which is
- * the opposite of the obvious design and the only one that holds. Waiting for
- * an onLoad before revealing the image loses every icon whose load finished
+ * The icon renders by default and is removed only when it fails, which is the
+ * opposite of the obvious design and the only one that holds. Waiting for an
+ * onLoad before revealing the image loses every icon whose load finished
  * before React attached the handler, and an image served from cache almost
- * always does — the icons were arriving intact and staying invisible. A
- * pending image draws nothing, so the letters underneath cover the wait, and
- * a broken one is pulled out before the browser can draw its placeholder over
- * them. That matters here because several issuers host their logos on CDNs
- * that hang rather than fail for part of the world.
+ * always does — the icons were arriving intact and staying invisible.
+ *
+ * A host that has already refused is not asked again, so the broken picture
+ * the browser draws while an error is in flight happens once rather than on
+ * every row of every visit. See lib/iconStore.
  */
 function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
   const known = TOKENS.find((t) => t.symbol === symbol);
-  const [failed, setFailed] = useState(false);
   const logo = src ?? known?.logoURI;
 
+  // Re-renders this glyph when any other one retires the host it was about to use.
+  useSyncExternalStore(subscribeIcons, iconsVersion, iconsServerVersion);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     setFailed(false);
   }, [logo]);
+
+  const showIcon = !!logo && !failed && !iconIsDead(logo);
 
   const initials = symbol.length <= 4 ? symbol : symbol.slice(0, 3);
   const size = initials.length >= 4 ? "text-[0.5rem]" : "text-[0.62rem]";
@@ -59,14 +64,17 @@ function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
       >
         {initials}
       </span>
-      {logo && !failed && (
+      {showIcon && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={logo}
           alt=""
           width={32}
           height={32}
-          onError={() => setFailed(true)}
+          onError={() => {
+            markIconDead(logo);
+            setFailed(true);
+          }}
           className="absolute inset-0 h-8 w-8 object-cover"
         />
       )}

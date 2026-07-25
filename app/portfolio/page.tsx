@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useWallet, shortAddr } from "@/lib/useWallet";
 import { tokenMetaForField } from "@/lib/tokens";
+import { ensureTokenMeta } from "@/lib/tokenMeta";
 import { useAssets, totalUsd } from "@/lib/assets";
 import AssetRow from "@/components/AssetRow";
 import Spinner from "@/components/Spinner";
@@ -122,6 +123,19 @@ function PrivateCard({ wallet }: { wallet: WalletState }) {
   const shielded = useShielded();
   const [copied, setCopied] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
+  // Bumped when the chain names a token the book was showing as a bare
+  // address, so those rows re-render with their ticker and real decimals.
+  const [, setMetaVersion] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    ensureTokenMeta(shielded.balances.map((b) => b.token)).then((learned) => {
+      if (alive && learned) setMetaVersion((v) => v + 1);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [shielded.balances]);
 
   const copy = async (text: string) => {
     try {
@@ -209,7 +223,7 @@ function PrivateCard({ wallet }: { wallet: WalletState }) {
                 {shielded.balances.map((b) => {
                   const meta = tokenMetaForField(b.token);
                   return (
-                    <div key={meta.symbol} className="flex items-center justify-between bg-ink px-3 py-2.5">
+                    <div key={b.token.toString()} className="flex items-center justify-between bg-ink px-3 py-2.5">
                       <span className="text-sm text-bone">{meta.symbol}</span>
                       <span className="flex flex-col items-end">
                         <span className="font-data text-sm text-acid">

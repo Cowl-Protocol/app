@@ -33,23 +33,25 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const [picking, setPicking] = useState(false);
   const [exact, setExact] = useState(false);
   const [spread, setSpread] = useState<string | null>(null);
-  const [publicBal, setPublicBal] = useState("0");
+  // null = the read failed, which is not the same as zero.
+  const [publicBal, setPublicBal] = useState<string | null>("0");
   const [confirming, setConfirming] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const tokenField = token.native ? 0n : BigInt(token.address);
 
+  const { address: walletAddress, getBalance } = wallet;
   const refreshBal = useCallback(async () => {
-    if (!wallet.address) {
+    if (!walletAddress) {
       setPublicBal("0");
       return;
     }
-    setPublicBal(await wallet.getBalance(token));
-  }, [wallet, token]);
+    setPublicBal(await getBalance(token));
+  }, [walletAddress, getBalance, token]);
 
   useEffect(() => {
     refreshBal();
-  }, [refreshBal, wallet.address]);
+  }, [refreshBal]);
 
   const value = useMemo(() => {
     try {
@@ -76,10 +78,11 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const unlocked = shielded.status === "ready";
 
   const amt = parseFloat(amount) || 0;
-  const bal = parseFloat(publicBal) || 0;
+  const balUnknown = publicBal === null;
+  const bal = parseFloat(publicBal ?? "0") || 0;
   const insufficient =
     mode === "shield"
-      ? !!wallet.address && amt > bal
+      ? !!wallet.address && !balUnknown && amt > bal
       : unlocked && requiredTotal > shieldedBal;
   const belowTier = !exact && value > 0n && parts.length === 0;
   const tooMany = !exact && parts.length > MAX_BOUNDARY_TXS;
@@ -166,11 +169,20 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 
   const publicSide = (
     <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
-      <span>
-        {bal.toLocaleString("en-US", { maximumFractionDigits: 4 })} {token.symbol}
-      </span>
-      {mode === "shield" && !!wallet.address && (
-        <button onClick={() => setAmount(publicBal)} className="text-acid hover:text-acid2 font-data text-[0.65rem]">
+      {balUnknown ? (
+        <button onClick={refreshBal} className="text-muted hover:text-bone font-data">
+          balance unavailable · retry
+        </button>
+      ) : (
+        <span>
+          {bal.toLocaleString("en-US", { maximumFractionDigits: 4 })} {token.symbol}
+        </span>
+      )}
+      {mode === "shield" && !!wallet.address && !balUnknown && (
+        <button
+          onClick={() => setAmount(publicBal ?? "0")}
+          className="text-acid hover:text-acid2 font-data text-[0.65rem]"
+        >
           MAX
         </button>
       )}

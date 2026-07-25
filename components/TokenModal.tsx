@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAddress, isAddress } from "viem";
+import { formatUnits, getAddress, isAddress } from "viem";
 import { TOKENS, type Token } from "@/lib/tokens";
 import { fetchTokenList } from "@/lib/tokenList";
 import { fetchBalance, publicClient } from "@/lib/useWallet";
@@ -115,7 +115,9 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   const [listed, setListed] = useState<Token[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [lookup, setLookup] = useState<Lookup>({ state: "idle" });
-  const [balances, setBalances] = useState<Record<string, string>>({});
+  // Base units per token address; a token missing from the map is one whose
+  // read failed, which the row shows as nothing rather than as zero.
+  const [balances, setBalances] = useState<Record<string, bigint>>({});
 
   useEffect(() => {
     if (open && allowImport) setImported(loadImported());
@@ -155,11 +157,17 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
       return;
     }
     let alive = true;
-    Promise.all(pinned.map(async (t) => [t.address, await fetchBalance(owner, t)] as const)).then(
-      (rows) => {
-        if (alive) setBalances(Object.fromEntries(rows));
-      },
-    );
+    Promise.all(
+      pinned.map(async (t) => {
+        try {
+          return [t.address, await fetchBalance(owner, t)] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((rows) => {
+      if (alive) setBalances(Object.fromEntries(rows.filter((r) => r !== null)));
+    });
     return () => {
       alive = false;
     };
@@ -209,12 +217,11 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
       t.name.toLowerCase().includes(needle) ||
       t.address.toLowerCase() === needle);
 
-  const pinnedRows = pinned
-    .filter(matches)
-    .sort(
-      (a, b) =>
-        (parseFloat(balances[b.address] ?? "0") || 0) - (parseFloat(balances[a.address] ?? "0") || 0),
-    );
+  const pinnedRows = pinned.filter(matches).sort((a, b) => {
+    const av = balances[a.address] ?? 0n;
+    const bv = balances[b.address] ?? 0n;
+    return bv === av ? 0 : bv > av ? 1 : -1;
+  });
   const listedRows = known.filter((t) => !pinned.includes(t)).filter(matches);
   const list = [...pinnedRows, ...listedRows];
 
@@ -329,10 +336,10 @@ function Row({
   onPick,
 }: {
   token: Token;
-  balance?: string;
+  balance?: bigint;
   onPick: (t: Token) => void;
 }) {
-  const bal = parseFloat(balance ?? "0") || 0;
+  const bal = balance === undefined ? 0 : Number(formatUnits(balance, token.decimals));
   return (
     <button
       onClick={() => onPick(token)}

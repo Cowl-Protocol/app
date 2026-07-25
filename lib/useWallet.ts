@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { createPublicClient, formatUnits } from "viem";
 import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
@@ -21,9 +21,7 @@ const ERC20_BALANCE_ABI = [
   },
 ] as const;
 
-/** Read-only client used for balances, independent of any wallet. The network's
- * fallback RPC actually engages here (a bare http() only ever uses the first
- * url), which matters where the primary is geo-restricted. */
+/** Read-only client used for balances, independent of any wallet. */
 export const publicClient = createPublicClient({
   chain,
   transport: transportFor(net),
@@ -32,30 +30,41 @@ export const publicClient = createPublicClient({
   batch: { multicall: { wait: 24 } },
 });
 
-/** Balance of `owner` for a token (native or ERC-20), formatted. */
-export async function fetchBalance(owner: `0x${string}`, token: Token): Promise<string> {
+/**
+ * Balance of `owner` for a token, in base units.
+ *
+ * Throws when the read fails. That is deliberate: an earlier version answered
+ * an unreachable endpoint with zero, and a confident zero is the one wrong
+ * answer a balance must never give — it reads as "your funds are gone" and, on
+ * the shielded side, would invite a second deposit of money already deposited.
+ * Callers render the failure instead.
+ */
+export async function fetchBalance(owner: `0x${string}`, token: Token): Promise<bigint> {
+  if (token.native) return publicClient.getBalance({ address: owner });
+  if (/^0x0{40}$/i.test(token.address)) return 0n;
+  return publicClient.readContract({
+    address: token.address,
+    abi: ERC20_BALANCE_ABI,
+    functionName: "balanceOf",
+    args: [owner],
+  }) as Promise<bigint>;
+}
+
+/** Formatted balance, or null when the read failed. */
+export async function fetchBalanceFormatted(owner: `0x${string}`, token: Token): Promise<string | null> {
   try {
-    if (token.native) {
-      const bal = await publicClient.getBalance({ address: owner });
-      return formatUnits(bal, token.decimals);
-    }
-    if (/^0x0{40}$/i.test(token.address)) return "0";
-    const bal = (await publicClient.readContract({
-      address: token.address,
-      abi: ERC20_BALANCE_ABI,
-      functionName: "balanceOf",
-      args: [owner],
-    })) as bigint;
-    return formatUnits(bal, token.decimals);
+    return formatUnits(await fetchBalance(owner, token), token.decimals);
   } catch {
-    return "0";
+    return null;
   }
 }
 
 /**
  * Thin wrapper over wagmi + RainbowKit so the components keep a single, stable
- * wallet shape. Connecting is delegated to the themed RainbowKit modal, which
- * covers injected wallets, WalletConnect (mobile QR) and Coinbase Wallet.
+ * wallet shape. The returned object is memoised on the values that actually
+ * change — components key effects off it, and a fresh object every render used
+ * to re-fire every balance read on every render, which turned into a burst of
+ * requests and, against a rate-limited endpoint, a screen full of zeros.
  */
 export function useWallet() {
   const { address, chainId, isConnecting } = useAccount();
@@ -74,26 +83,29 @@ export function useWallet() {
   }, [switchChain]);
 
   const getBalance = useCallback(
-    async (token: Token): Promise<string> => {
+    async (token: Token): Promise<string | null> => {
       if (!address) return "0";
-      return fetchBalance(address, token);
+      return fetchBalanceFormatted(address, token);
     },
     [address],
   );
 
-  return {
-    address: address ?? null,
-    chainId: chainId ?? null,
-    connecting: isConnecting,
-    // RainbowKit's modal handles the no-wallet case (shows install options).
-    hasWallet: true,
-    wrongNetwork,
-    connect,
-    disconnect,
-    switchNetwork,
-    getBalance,
-    network: net,
-  };
+  return useMemo(
+    () => ({
+      address: address ?? null,
+      chainId: chainId ?? null,
+      connecting: isConnecting,
+      // RainbowKit's modal handles the no-wallet case (shows install options).
+      hasWallet: true,
+      wrongNetwork,
+      connect,
+      disconnect,
+      switchNetwork,
+      getBalance,
+      network: net,
+    }),
+    [address, chainId, isConnecting, wrongNetwork, connect, disconnect, switchNetwork, getBalance],
+  );
 }
 
 export function shortAddr(a: string): string {

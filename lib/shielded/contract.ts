@@ -297,12 +297,16 @@ export type ChainLeaves = {
  * every deposit. The head is pinned before the log query so the cursor can
  * never step past events that land mid-read.
  */
-export async function fetchLeaves(net: NetworkDef, fromBlock: bigint): Promise<ChainLeaves> {
+export async function fetchLeaves(
+  net: NetworkDef,
+  fromBlock: bigint,
+  client: PoolClient = publicClient,
+): Promise<ChainLeaves> {
   const pool = poolAddress(net);
   if (!pool) throw new Error(`No shielded pool deployed on ${net.label}.`);
 
-  const latestBlock = await publicClient.getBlockNumber();
-  const logs = fromBlock > latestBlock ? [] : await fetchPoolEvents(pool, fromBlock, latestBlock);
+  const latestBlock = await client.getBlockNumber();
+  const logs = fromBlock > latestBlock ? [] : await fetchPoolEvents(client, pool, fromBlock, latestBlock, true);
 
   const leafByIndex = new Map<number, ChainLeaf>();
   const cipherByIndex = new Map<number, `0x${string}`>();
@@ -330,13 +334,13 @@ export async function fetchLeaves(net: NetworkDef, fromBlock: bigint): Promise<C
   // Read both at the block the log was read through — a deposit landing between
   // the queries must not look like a hole in our log.
   const [totalLeaves, root] = await Promise.all([
-    publicClient.readContract({
+    client.readContract({
       address: pool,
       abi: SHIELDED_POOL_ABI,
       functionName: "nextLeafIndex",
       blockNumber: latestBlock,
     }),
-    publicClient.readContract({
+    client.readContract({
       address: pool,
       abi: SHIELDED_POOL_ABI,
       functionName: "root",
@@ -346,27 +350,132 @@ export async function fetchLeaves(net: NetworkDef, fromBlock: bigint): Promise<C
   return { leaves, nullifiers, totalLeaves: Number(totalLeaves), root, latestBlock };
 }
 
-type PoolLog = { eventName: string; args: Record<string, unknown> };
+type PoolLog = { eventName: string; args: Record<string, unknown>; blockNumber: bigint | null };
+
+/** The read surface the log replay needs — the app's shared client satisfies it. */
+type PoolClient = Pick<typeof publicClient, "getBlockNumber" | "readContract" | "getContractEvents">;
+
+/** Window sizes to try when a provider caps eth_getLogs without naming its cap. */
+const CAP_LADDER = [500_000n, 100_000n, 10_000n, 1_000n, 100n];
+
+/** Windows in flight at once, at the start. Throttling walks this down. */
+const GROUP = 6;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Discovered cap per pool address, so a second sync never re-probes. */
+const capCache = new Map<string, bigint>();
+
+function isRangeError(message: string): boolean {
+  return /limit|range|exceed|too (?:many|large|broad)/i.test(message);
+}
+
+/** The cap a provider named in its rejection, when it named one. */
+function namedCap(message: string): bigint | null {
+  const m = /(?:blocks?\D{0,20}|is )(\d{2,8})(?:\s*blocks?)?/i.exec(message);
+  return m ? BigInt(m[1]!) : null;
+}
+
+/**
+ * Find the widest window this provider will serve, by trying a descending
+ * ladder once and remembering the answer.
+ *
+ * The ladder replaces what used to be blind halving. Halving looks reasonable
+ * and behaves terribly against a provider that caps at a thousand blocks and
+ * declines to say so: each rejected window splits into two more, so covering a
+ * span of half a million blocks costs upwards of two thousand requests, most of
+ * them rejections, which then trip the rate limit that kills the replay. Five
+ * probes settle the same question, and the rest of the replay is windows that
+ * are known to work.
+ */
+async function discoverCap(client: PoolClient, pool: Address, head: bigint): Promise<bigint> {
+  const cached = capCache.get(pool);
+  if (cached) return cached;
+  for (const cap of CAP_LADDER) {
+    const from = head > cap ? head - cap : 0n;
+    try {
+      await client.getContractEvents({ address: pool, abi: SHIELDED_POOL_ABI, fromBlock: from, toBlock: head });
+      capCache.set(pool, cap);
+      return cap;
+    } catch (e) {
+      if (!isRangeError((e as Error).message)) throw e;
+    }
+  }
+  throw new Error("No usable eth_getLogs window: the RPC rejected even a hundred blocks.");
+}
+
+/** One window, with a single retry so a transient does not lose the whole replay. */
+async function fetchWindow(
+  client: PoolClient,
+  pool: Address,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<PoolLog[]> {
+  try {
+    return (await client.getContractEvents({
+      address: pool,
+      abi: SHIELDED_POOL_ABI,
+      fromBlock,
+      toBlock,
+    })) as unknown as PoolLog[];
+  } catch (e) {
+    if (isRangeError((e as Error).message)) throw e;
+    await new Promise((r) => setTimeout(r, 600));
+    return (await client.getContractEvents({
+      address: pool,
+      abi: SHIELDED_POOL_ABI,
+      fromBlock,
+      toBlock,
+    })) as unknown as PoolLog[];
+  }
+}
 
 /**
  * getContractEvents that survives providers capping how many blocks one
- * eth_getLogs may span: on a range rejection the cap is parsed out of the
- * message when the provider names it, and the range refetches in cap-sized
- * windows, in small concurrent groups. Blind halving is the fallback.
+ * eth_getLogs may span. The whole range goes out first — most providers serve
+ * it, and on the pool's own history that is a single request. On a cap the
+ * width is taken from the provider's message when it names one, probed
+ * otherwise, and the range refetches in windows of that width, in small
+ * concurrent groups.
  */
-async function fetchPoolEvents(pool: Address, fromBlock: bigint, toBlock: bigint): Promise<PoolLog[]> {
+async function fetchPoolEvents(
+  client: PoolClient,
+  pool: Address,
+  fromBlock: bigint,
+  toBlock: bigint,
+  atHead = false,
+): Promise<PoolLog[]> {
+  // Asking for "latest" rather than the head's number is not cosmetic: at least
+  // one provider caps a numbered range at a thousand blocks while serving the
+  // same span unbounded under the tag, which is the difference between one
+  // request and six hundred. The reply can then run past the head this sync
+  // pinned, so it is trimmed back — the leaf count and root are read at that
+  // head, and a log that outran them would look like a pool gaining leaves
+  // from nowhere.
+  if (atHead) {
+    try {
+      const logs = (await client.getContractEvents({
+        address: pool,
+        abi: SHIELDED_POOL_ABI,
+        fromBlock,
+        toBlock: "latest",
+      })) as unknown as PoolLog[];
+      return logs.filter((l) => l.blockNumber === null || l.blockNumber <= toBlock);
+    } catch (e) {
+      if (!isRangeError((e as Error).message)) throw e;
+      // Capped even under the tag — fall through to windows.
+    }
+  }
+
   try {
-    const logs = await publicClient.getContractEvents({ address: pool, abi: SHIELDED_POOL_ABI, fromBlock, toBlock });
-    return logs as unknown as PoolLog[];
+    return await fetchWindow(client, pool, fromBlock, toBlock);
   } catch (e) {
     const msg = (e as Error).message;
-    const named = /(?:blocks?\D{0,20}|is )(\d{2,8})(?:\s*blocks?)?/i.exec(msg);
-    const rangeError = /limit|range|exceed|too (?:many|large|broad)/i.test(msg);
-    if (!rangeError || toBlock <= fromBlock) throw e;
+    if (!isRangeError(msg) || toBlock <= fromBlock) throw e;
 
     const span = toBlock - fromBlock + 1n;
-    let cap = named ? BigInt(named[1]!) : span / 2n;
-    if (cap < 1n || cap >= span) cap = span / 2n;
+    let cap = namedCap(msg) ?? (await discoverCap(client, pool, toBlock));
+    if (cap < 1n || cap >= span) cap = await discoverCap(client, pool, toBlock);
 
     const windows: [bigint, bigint][] = [];
     for (let start = fromBlock; start <= toBlock; start += cap) {
@@ -374,15 +483,57 @@ async function fetchPoolEvents(pool: Address, fromBlock: bigint, toBlock: bigint
       windows.push([start, end]);
     }
 
-    const out: PoolLog[] = [];
-    const GROUP = 6; // per roundtrip, small enough to stay under rate limits
-    for (let i = 0; i < windows.length; i += GROUP) {
-      const group = windows.slice(i, i + GROUP);
-      const results = await Promise.all(group.map(([a, b]) => fetchPoolEvents(pool, a, b)));
-      for (const r of results) out.push(...r);
-    }
-    return out;
+    return drainWindows(client, pool, windows);
   }
+}
+
+/**
+ * Work through the windows, letting the provider set the pace.
+ *
+ * A capped provider is usually a throttled one too, and a cold replay is
+ * hundreds of windows — enough that a fixed concurrency either crawls or trips
+ * the limit and loses the replay outright. Refused windows go back in the queue
+ * while concurrency halves and the wait doubles; clean rounds earn both back.
+ * The attempt ceiling is what separates a slow provider from a broken one.
+ */
+async function drainWindows(
+  client: PoolClient,
+  pool: Address,
+  windows: [bigint, bigint][],
+): Promise<PoolLog[]> {
+  const out: PoolLog[] = [];
+  const queue = [...windows];
+  let group = GROUP;
+  let wait = 0;
+  let refusals = 0;
+
+  while (queue.length > 0) {
+    if (wait > 0) await sleep(wait);
+    const batch = queue.splice(0, group);
+    const results = await Promise.allSettled(batch.map(([a, b]) => fetchWindow(client, pool, a, b)));
+
+    const refused: [bigint, bigint][] = [];
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") out.push(...r.value);
+      else refused.push(batch[i]!);
+    });
+
+    if (refused.length > 0) {
+      queue.unshift(...refused);
+      refusals++;
+      if (refusals > 40) {
+        throw new Error(
+          `The RPC kept refusing the log replay (${queue.length} of ${windows.length} windows left). Try again in a minute.`,
+        );
+      }
+      group = Math.max(1, Math.floor(group / 2));
+      wait = Math.min(wait > 0 ? wait * 2 : 500, 8_000);
+    } else {
+      group = Math.min(GROUP, group + 1);
+      wait = Math.floor(wait / 2);
+    }
+  }
+  return out;
 }
 
 /** Pull the NoteCommitted event out of a receipt, ignoring unrelated logs. */

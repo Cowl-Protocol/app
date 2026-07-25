@@ -33,7 +33,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const [receive, setReceive] = useState<Token>(tokenBySymbol("USDG"));
   const [amount, setAmount] = useState("");
   const [picking, setPicking] = useState<null | "pay" | "receive">(null);
-  const [payBal, setPayBal] = useState("0");
+  const [payBal, setPayBal] = useState<string | null>("0");
   const [confirming, setConfirming] = useState(false);
   const [slippage, setSlippage] = useState(0.5);
   const [showSettings, setShowSettings] = useState(false);
@@ -44,17 +44,18 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
     return a * rate(pay.symbol, receive.symbol);
   }, [amount, pay.symbol, receive.symbol]);
 
+  const { address: walletAddress, getBalance } = wallet;
   const refreshBal = useCallback(async () => {
-    if (!wallet.address) {
+    if (!walletAddress) {
       setPayBal("0");
       return;
     }
-    setPayBal(await wallet.getBalance(pay));
-  }, [wallet, pay]);
+    setPayBal(await getBalance(pay));
+  }, [walletAddress, getBalance, pay]);
 
   useEffect(() => {
     refreshBal();
-  }, [refreshBal, wallet.address]);
+  }, [refreshBal]);
 
   const flip = () => {
     setPay(receive);
@@ -74,7 +75,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   };
 
   const amt = parseFloat(amount) || 0;
-  const bal = parseFloat(payBal) || 0;
+  const bal = parseFloat(payBal ?? "0") || 0;
   const insufficient = wallet.address && amt > bal;
   const ready = !!wallet.address && !wallet.wrongNetwork && amt > 0 && !insufficient;
 
@@ -133,9 +134,9 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           editable={LIVE}
           onAmount={setAmount}
           usd={amt * (USD[pay.symbol] ?? 0)}
-          balance={payBal}
+          balance={payBal ?? undefined}
           showMax={LIVE && !!wallet.address}
-          onMax={() => setAmount(payBal)}
+          onMax={() => setAmount(payBal ?? "0")}
           onPick={LIVE ? () => setPicking("pay") : undefined}
         />
 

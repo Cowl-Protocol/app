@@ -21,8 +21,15 @@ export type NetworkDef = {
   key: string;
   label: string;
   chainId: number;
-  rpcUrl: string;
-  rpcFallback?: string;
+  /**
+   * RPC endpoints in preference order. The first that answers a given call wins,
+   * and a call it refuses falls through to the next — which is load-bearing
+   * here, not just redundancy: the fast endpoints serve balances and calls but
+   * refuse historical eth_getLogs, and the explorer endpoint that serves the
+   * log replay would rate-limit a page of balances into failure. Between them
+   * every call has a home. Browser-usable only, so every entry sends CORS.
+   */
+  rpcUrls: string[];
   defaultRelay?: string;
   explorer: string;
   currency: { name: string; symbol: string; decimals: number };
@@ -35,8 +42,11 @@ export const NETWORKS: Record<string, NetworkDef> = {
     key: "robinhood-testnet",
     label: "Robinhood Chain Testnet",
     chainId: 46630,
-    rpcUrl: "https://46630.rpc.thirdweb.com",
-    rpcFallback: "https://rpc.testnet.chain.robinhood.com",
+    rpcUrls: [
+      "https://46630.rpc.thirdweb.com", // serves logs too, so it leads here
+      "https://robinhood-sepolia-rpc.publicnode.com",
+      "https://rpc.testnet.chain.robinhood.com",
+    ],
     defaultRelay: "https://relay.cowlprotocol.com",
     explorer: "https://explorer.testnet.chain.robinhood.com",
     currency: { name: "Ether", symbol: "ETH", decimals: 18 },
@@ -55,8 +65,16 @@ export const NETWORKS: Record<string, NetworkDef> = {
     key: "robinhood-mainnet",
     label: "Robinhood Chain",
     chainId: 4663,
-    rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
-    rpcFallback: "https://robinhoodchain.blockscout.com/api/eth-rpc",
+    rpcUrls: [
+      // Fast, CORS-open, no rate limit worth speaking of, but it answers
+      // historical eth_getLogs with a 403 — which viem treats as this
+      // transport declining, so the log replay lands on the explorer below.
+      "https://robinhood-rpc.publicnode.com",
+      "https://robinhoodchain.blockscout.com/api/eth-rpc",
+      // Robinhood's own endpoint is fastest where it answers at all; it is
+      // unreachable from some regions, so it sits last rather than first.
+      "https://rpc.mainnet.chain.robinhood.com",
+    ],
     explorer: "https://robinhoodchain.blockscout.com",
     currency: { name: "Ether", symbol: "ETH", decimals: 18 },
     testnet: false,
@@ -115,9 +133,7 @@ export function toViemChain(net: NetworkDef): Chain {
     id: net.chainId,
     name: net.label,
     nativeCurrency: net.currency,
-    rpcUrls: {
-      default: { http: [net.rpcUrl, ...(net.rpcFallback ? [net.rpcFallback] : [])] },
-    },
+    rpcUrls: { default: { http: net.rpcUrls } },
     blockExplorers: { default: { name: net.label, url: net.explorer } },
     contracts: { multicall3: { address: MULTICALL3 } },
     testnet: net.testnet,

@@ -52,23 +52,24 @@ export default function Portfolio() {
 }
 
 function PublicCard({ wallet }: { wallet: WalletState }) {
+  // A symbol missing from the map is a read that failed; it shows as unavailable
+  // rather than as a zero the wallet never reported.
   const [balances, setBalances] = useState<Record<string, string>>({});
+  const { address: walletAddress, getBalance } = wallet;
 
   useEffect(() => {
     let alive = true;
-    if (!wallet.address) {
+    if (!walletAddress) {
       setBalances({});
       return;
     }
-    Promise.all(TOKENS.map(async (t) => [t.symbol, await wallet.getBalance(t)] as const)).then(
-      (rows) => {
-        if (alive) setBalances(Object.fromEntries(rows));
-      },
-    );
+    Promise.all(TOKENS.map(async (t) => [t.symbol, await getBalance(t)] as const)).then((rows) => {
+      if (alive) setBalances(Object.fromEntries(rows.filter(([, v]) => v !== null) as [string, string][]));
+    });
     return () => {
       alive = false;
     };
-  }, [wallet, wallet.address]);
+  }, [walletAddress, getBalance]);
 
   const total = TOKENS.reduce(
     (sum, t) => sum + (parseFloat(balances[t.symbol] ?? "0") || 0) * (USD[t.symbol] ?? 0),
@@ -103,6 +104,7 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
           </div>
           <div>
             {TOKENS.map((t) => {
+              const known = balances[t.symbol] !== undefined;
               const bal = parseFloat(balances[t.symbol] ?? "0") || 0;
               return (
                 <div key={t.symbol} className="flex items-center gap-3 px-1 py-3">
@@ -112,10 +114,16 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
                     <span className="text-xs text-faint">{t.name}</span>
                   </span>
                   <span className="flex flex-col items-end">
-                    <span className="font-data text-sm text-bone">{fmt(bal)}</span>
-                    <span className="text-xs text-faint font-data">
-                      ${fmt(bal * (USD[t.symbol] ?? 0), 2)}
-                    </span>
+                    {known ? (
+                      <>
+                        <span className="font-data text-sm text-bone">{fmt(bal)}</span>
+                        <span className="text-xs text-faint font-data">
+                          ${fmt(bal * (USD[t.symbol] ?? 0), 2)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="font-data text-xs text-faint">unavailable</span>
+                    )}
                   </span>
                 </div>
               );

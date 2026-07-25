@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { formatUnits } from "viem";
 import { useWallet, shortAddr } from "@/lib/useWallet";
-import { TOKENS, tokenMetaForField } from "@/lib/tokens";
+import { TOKENS, tokenMetaForField, type Token } from "@/lib/tokens";
+import { useHoldings } from "@/lib/holdings";
 import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
 import { fetchTokenPriceUsd } from "@/lib/tokenPrice";
 import { usePoolStats } from "@/lib/pool";
@@ -53,44 +54,61 @@ export default function Portfolio() {
 }
 
 function PublicCard({ wallet }: { wallet: WalletState }) {
-  // A symbol missing from the map is a read that failed; it shows as unavailable
-  // rather than as a zero the wallet never reported.
-  const [balances, setBalances] = useState<Record<string, string>>({});
   const { address: walletAddress, getBalance } = wallet;
 
+  // The native coin is read from the chain; everything else is whatever the
+  // address is discovered to hold, so a wallet with tokenized Apple in it shows
+  // tokenized Apple without anyone pasting a contract address first.
+  const { holdings, loading } = useHoldings(walletAddress as `0x${string}` | null);
+  const native = TOKENS[0]!;
+
+  // null = the read failed, which is not the same as zero.
+  const [nativeBal, setNativeBal] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
     if (!walletAddress) {
-      setBalances({});
+      setNativeBal(null);
       return;
     }
-    Promise.all(TOKENS.map(async (t) => [t.symbol, await getBalance(t)] as const)).then((rows) => {
-      if (alive) setBalances(Object.fromEntries(rows.filter(([, v]) => v !== null) as [string, string][]));
+    getBalance(native).then((b) => {
+      if (alive) setNativeBal(b);
     });
     return () => {
       alive = false;
     };
-  }, [walletAddress, getBalance]);
+  }, [walletAddress, getBalance, native]);
+
+  const rows: { token: Token; amount: string; rate: number | null }[] = [
+    { token: native, amount: nativeBal ?? "0", rate: null },
+    ...holdings.map((h) => ({
+      token: h.token,
+      amount: formatUnits(h.value, h.token.decimals),
+      rate: h.rate,
+    })),
+  ];
 
   const [prices, setPrices] = useState<Record<string, number | null>>({});
   useEffect(() => {
     let alive = true;
-    Promise.all(TOKENS.map(async (t) => [t.symbol, await fetchTokenPriceUsd(t)] as const)).then((rows) => {
-      if (alive) setPrices(Object.fromEntries(rows));
+    Promise.all(
+      rows.map(async (r) => {
+        const key = r.token.native ? "native" : r.token.address.toLowerCase();
+        return [key, await fetchTokenPriceUsd(r.token, r.rate)] as const;
+      }),
+    ).then((entries) => {
+      if (alive) setPrices(Object.fromEntries(entries));
     });
     return () => {
       alive = false;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress, holdings.length]);
 
-  const priceOf = (t: (typeof TOKENS)[number]) => prices[t.symbol] ?? null;
+  const priceOf = (t: Token) => prices[t.native ? "native" : t.address.toLowerCase()] ?? null;
   // Only priced holdings count toward the total, so it never quietly includes
   // a token valued at a number nobody supplied.
-  const total = TOKENS.reduce(
-    (sum, t) => sum + (parseFloat(balances[t.symbol] ?? "0") || 0) * (priceOf(t) ?? 0),
-    0,
-  );
-  const anyPriced = TOKENS.some((t) => priceOf(t) !== null);
+  const total = rows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0) * (priceOf(r.token) ?? 0), 0);
+  const anyPriced = rows.some((r) => priceOf(r.token) !== null);
 
   return (
     <div className="bg-card p-5 fade-up">
@@ -121,24 +139,22 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
             </p>
           </div>
           <div>
-            {TOKENS.map((t) => {
-              const known = balances[t.symbol] !== undefined;
-              const bal = parseFloat(balances[t.symbol] ?? "0") || 0;
+            {rows.map((r) => {
+              const known = !r.token.native || nativeBal !== null;
+              const bal = parseFloat(r.amount) || 0;
               return (
-                <div key={t.symbol} className="flex items-center gap-3 px-1 py-3">
-                  <TokenGlyph symbol={t.symbol} />
-                  <span className="flex flex-col flex-1">
-                    <span className="text-sm text-bone">{t.symbol}</span>
-                    <span className="text-xs text-faint">{t.name}</span>
+                <div key={r.token.address} className="flex items-center gap-3 px-1 py-3">
+                  <TokenGlyph symbol={r.token.symbol} src={r.token.logoURI} />
+                  <span className="flex flex-col flex-1 min-w-0">
+                    <span className="text-sm text-bone truncate">{r.token.symbol}</span>
+                    <span className="text-xs text-faint truncate">{r.token.name}</span>
                   </span>
-                  <span className="flex flex-col items-end">
+                  <span className="flex flex-col items-end shrink-0">
                     {known ? (
                       <>
-                        <span className="font-data text-sm text-bone">
-                          {formatBalance(balances[t.symbol] ?? "0")}
-                        </span>
+                        <span className="font-data text-sm text-bone">{formatBalance(r.amount)}</span>
                         <span className="text-xs text-faint font-data">
-                          {usdOf(bal, priceOf(t)) ?? ""}
+                          {usdOf(bal, priceOf(r.token)) ?? ""}
                         </span>
                       </>
                     ) : (
@@ -148,6 +164,7 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
                 </div>
               );
             })}
+            {loading && <p className="px-1 py-2 text-xs text-faint">Looking for your tokens…</p>}
           </div>
         </>
       ) : (

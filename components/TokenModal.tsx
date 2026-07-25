@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatUnits, getAddress, isAddress } from "viem";
 import { TOKENS, type Token } from "@/lib/tokens";
 import { fetchTokenList } from "@/lib/tokenList";
+import { fetchHoldings } from "@/lib/holdings";
 import { formatUnitsExact } from "@/lib/prices";
 import { fetchBalance, publicClient } from "@/lib/useWallet";
 
@@ -123,6 +124,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   const [q, setQ] = useState("");
   const [imported, setImported] = useState<Token[]>([]);
   const [listed, setListed] = useState<Token[]>([]);
+  const [held, setHeld] = useState<Token[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [lookup, setLookup] = useState<Lookup>({ state: "idle" });
   // Base units per token address; a token missing from the map is one whose
@@ -149,11 +151,31 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
     };
   }, [open, allowImport]);
 
+  // Anything the wallet already holds is pinned alongside the curated set: a
+  // token you own is one you are likely to shield, and having to paste its
+  // address first is a poor way to find out you own it.
+  useEffect(() => {
+    if (!open || !owner) {
+      setHeld([]);
+      return;
+    }
+    let alive = true;
+    fetchHoldings(owner).then((h) => {
+      if (alive) setHeld(h.map((x) => x.token));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open, owner]);
+
   const base = tokens ?? TOKENS;
-  const pinned = [
-    ...base,
-    ...imported.filter((i) => !base.some((b) => b.address.toLowerCase() === i.address.toLowerCase())),
-  ];
+  const seen = new Set<string>();
+  const pinned = [...base, ...held, ...imported].filter((t) => {
+    const key = t.address.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   const known = [
     ...pinned,
     ...listed.filter((l) => !pinned.some((p) => p.address.toLowerCase() === l.address.toLowerCase())),

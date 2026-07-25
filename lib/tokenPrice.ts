@@ -127,7 +127,7 @@ async function explorerCoinPrice(): Promise<number | null> {
   }
 }
 
-async function priceOf(token: Token): Promise<number | null> {
+async function priceOf(token: Token, hintRate: number | null): Promise<number | null> {
   const net = activeNetwork();
   const { weth, usdg } = net.contracts;
   // USDG is the unit everything else is quoted in, so quoting it against
@@ -151,11 +151,13 @@ async function priceOf(token: Token): Promise<number | null> {
   }
 
   if (token.native) return explorerCoinPrice();
-  return explorerRate(token.address);
+  // Callers that already carry the explorer's rate hand it over rather than
+  // making the same request again per token.
+  return hintRate ?? explorerRate(token.address);
 }
 
 /** USD price of a token, or null when nothing on chain will say. */
-export async function fetchTokenPriceUsd(token: Token): Promise<number | null> {
+export async function fetchTokenPriceUsd(token: Token, hintRate: number | null = null): Promise<number | null> {
   const key = `${activeNetwork().key}:${token.native ? "native" : token.address.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL) return hit.price;
@@ -164,7 +166,7 @@ export async function fetchTokenPriceUsd(token: Token): Promise<number | null> {
 
   const run = (async () => {
     try {
-      const price = await priceOf(token);
+      const price = await priceOf(token, hintRate);
       cache.set(key, { at: Date.now(), price });
       return price;
     } finally {
@@ -176,14 +178,14 @@ export async function fetchTokenPriceUsd(token: Token): Promise<number | null> {
 }
 
 /** A token's USD price once it lands; null until then, and if it never does. */
-export function useTokenPrice(token: Token | null): number | null {
+export function useTokenPrice(token: Token | null, hintRate: number | null = null): number | null {
   const [price, setPrice] = useState<number | null>(null);
   const key = token ? (token.native ? "native" : token.address.toLowerCase()) : null;
 
   useEffect(() => {
     if (!token) return;
     let alive = true;
-    fetchTokenPriceUsd(token).then((p) => {
+    fetchTokenPriceUsd(token, hintRate).then((p) => {
       if (alive) setPrice(p);
     });
     return () => {

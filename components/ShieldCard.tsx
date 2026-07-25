@@ -5,7 +5,7 @@ import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { decompose, groupParts, MAX_BOUNDARY_TXS, tiersFor } from "@/lib/denominations";
 import { formatBalance, formatUnitsExact, USD } from "@/lib/prices";
-import type { useWallet } from "@/lib/useWallet";
+import { shortAddr, type useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
 import { useShielded } from "./ShieldedProvider";
 import TokenModal, { TokenGlyph } from "./TokenModal";
@@ -228,6 +228,11 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
               {mode === "unshield" && <MaskLogo className="h-2 w-auto text-acid" />}
               {mode === "shield" ? "Public wallet" : "Shielded balance"}
+              {wallet.address && (
+                <span className="font-data text-[0.62rem] text-faint/70 normal-case tracking-normal">
+                  {shortAddr(wallet.address)}
+                </span>
+              )}
             </span>
             {mode === "shield" ? publicSide : shieldedSide}
           </div>
@@ -273,6 +278,11 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
               {mode === "shield" && <MaskLogo className="h-2 w-auto text-acid" />}
               {mode === "shield" ? "Shielded balance" : "Public wallet"}
+              {wallet.address && (
+                <span className="font-data text-[0.62rem] text-faint/70 normal-case tracking-normal">
+                  {shortAddr(wallet.address)}
+                </span>
+              )}
             </span>
             {mode === "shield" ? shieldedSide : publicSide}
           </div>

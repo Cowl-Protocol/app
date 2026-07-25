@@ -195,6 +195,13 @@ export default function BoundaryConfirmModal({
               );
             })}
 
+            {running && (
+              <p className="text-[0.7rem] text-faint leading-relaxed pt-1">
+                Keep this tab open until the last part lands.
+                {spread ? " The remaining parts are still waiting on the clock." : ""} A deposit
+                that has already gone out is safe either way.
+              </p>
+            )}
             {progress.error && (
               <p className="text-xs text-[#ff6b6b] leading-relaxed pt-1">{progress.error}</p>
             )}

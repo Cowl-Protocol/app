@@ -232,6 +232,18 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
   const clearProgress = useCallback(() => setProgress(null), []);
 
+  // Closing mid-run costs different things at different moments: a deposit
+  // already broadcast is safe, since its blinding is stashed before the
+  // transaction goes out and the next scan adopts it, but parts still queued
+  // behind a spread simply never fire. Either way the tab should not go quietly.
+  const running = !!progress && !progress.done && !progress.error;
+  useEffect(() => {
+    if (!running) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [running]);
+
   // ---- executors ------------------------------------------------------------
 
   const shieldExec = useCallback<ShieldedContextValue["shieldExec"]>(

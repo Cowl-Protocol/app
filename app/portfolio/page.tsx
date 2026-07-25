@@ -253,7 +253,7 @@ function PrivateCard({ wallet }: { wallet: WalletState }) {
                   </button>
                 </div>
                 <p className="text-[0.68rem] text-faint mt-1.5 leading-relaxed">
-                  Anyone can send to it privately, from the app or with cowl send.
+                  Anyone can pay it privately with cowl send.
                 </p>
               </div>
             )}

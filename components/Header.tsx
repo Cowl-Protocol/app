@@ -12,7 +12,7 @@ type WalletState = ReturnType<typeof useWallet>;
 const LINKS = [
   { href: "/", label: "Swap", soon: true },
   { href: "/shield", label: "Shield" },
-  { href: "/send", label: "Send" },
+  { href: "/send", label: "Send", soon: true },
   { href: "/portfolio", label: "Portfolio" },
 ];
 

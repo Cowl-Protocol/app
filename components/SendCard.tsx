@@ -8,6 +8,7 @@
 // What a sender needs is the recipient's zcowl address, and what a recipient
 // needs is to hand that address out. The two tabs are exactly those halves.
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { formatUnits, parseUnits } from "viem";
 import { isPaymentAddress } from "@/lib/shielded/keys";
 import { formatUnitsExact } from "@/lib/prices";
@@ -22,6 +23,12 @@ import InfoTip from "./InfoTip";
 
 type WalletState = ReturnType<typeof useWallet>;
 type Tab = "send" | "receive";
+
+// Private payments open in the app once the flow has carried real value
+// through the live pool. Until then the card shows the shape of a send and
+// stays inert — no keys derived, no signature asked for — with the boundary
+// and the CLI carrying the live flows.
+const LIVE = false;
 
 /** A token as the shielded book knows it: a pool field, named where possible. */
 type ShieldedToken = { field: bigint; symbol: string; decimals: number; logoURI?: string };
@@ -43,7 +50,7 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
   // Bumped when the chain names a token the book was showing as a bare address.
   const [metaVersion, setMetaVersion] = useState(0);
 
-  const unlocked = shielded.status === "ready";
+  const unlocked = LIVE && shielded.status === "ready";
 
   // Anyone can be paid in any ERC-20, so the book has to name tokens this app
   // has never been told about before it can offer them.
@@ -75,8 +82,13 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
     setSelected((cur) => (cur !== null && tokens.some((t) => t.field === cur) ? cur : tokens[0]!.field));
   }, [tokens]);
 
-  const token = tokens.find((t) => t.field === selected) ?? null;
+  const token = unlocked ? tokens.find((t) => t.field === selected) ?? null : null;
   const decimals = token?.decimals ?? 18;
+  // The card keeps its shape before there is a book to read, so the native
+  // token stands in for the glyph. It names nothing about what anyone holds.
+  const nativeMeta = tokenMetaForField(0n);
+  const displayToken: ShieldedToken =
+    token ?? { field: 0n, symbol: nativeMeta.symbol, decimals: nativeMeta.decimals, logoURI: logoFor(0n) };
 
   const value = useMemo(() => {
     try {
@@ -97,7 +109,7 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
   // transfer can carry. Say which number applies rather than failing at proving.
   const overSendable = !overBalance && value > sendable;
 
-  const ready = unlocked && !!token && value > 0n && validTo && !overBalance && !overSendable;
+  const ready = LIVE && unlocked && !!token && value > 0n && validTo && !overBalance && !overSendable;
 
   let label = "Enter an amount";
   if (unlocked && tokens.length === 0) label = "Shield something first";
@@ -167,11 +179,13 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
               align="right"
               text="Payments between shielded accounts never leave the pool. The chain records that a spend happened, not the asset, the amount or who was on either end."
             />
-            <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">Inside the pool</span>
+            <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
+              {LIVE ? "Inside the pool" : "Coming soon"}
+            </span>
           </span>
         </div>
 
-        {!unlocked ? (
+        {LIVE && !unlocked ? (
           <LockedPanel
             wallet={wallet}
             status={shielded.status}
@@ -189,7 +203,9 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
                   Shielded balance
                 </span>
                 <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
-                  {token ? (
+                  {!LIVE ? (
+                    <span>—</span>
+                  ) : token ? (
                     <>
                       <span>
                         {formatUnitsExact(balance, decimals)} {token.symbol}
@@ -208,7 +224,7 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
                   ) : (
                     <span>nothing shielded yet</span>
                   )}
-                  {shielded.syncing && (
+                  {LIVE && shielded.syncing && (
                     <span className="inline-block h-2 w-2 border-2 border-acid border-t-transparent rounded-full spin" />
                   )}
                 </span>
@@ -219,17 +235,15 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
                   inputMode="decimal"
                   placeholder="0"
                   value={amount}
-                  disabled={!token}
+                  disabled={!LIVE || !token}
                   onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
                 />
-                {token && (
-                  <span className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2">
-                    <TokenGlyph symbol={token.symbol} src={token.logoURI} />
-                    <span className="label-mono text-[0.78rem] text-bone">{token.symbol}</span>
-                  </span>
-                )}
+                <span className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2">
+                  <TokenGlyph symbol={displayToken.symbol} src={displayToken.logoURI} />
+                  <span className="label-mono text-[0.78rem] text-bone">{displayToken.symbol}</span>
+                </span>
               </div>
-              {tokens.length > 1 && (
+              {LIVE && tokens.length > 1 && (
                 <div className="flex flex-wrap gap-1 mt-3">
                   {tokens.map((t) => (
                     <button
@@ -253,24 +267,25 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
             <div className="bg-ink2 p-4 my-1">
               <div className="flex items-center justify-between mb-2 gap-3">
                 <span className="label-soft text-faint whitespace-nowrap">To</span>
-                {validTo && (
+                {LIVE && validTo && (
                   <span className="label-soft text-acid whitespace-nowrap">
                     {toSelf ? "Your own address" : "Valid address"}
                   </span>
                 )}
               </div>
               <textarea
-                className="w-full bg-transparent text-bone placeholder:text-faint outline-none font-data text-sm resize-none leading-relaxed break-all"
+                className="w-full bg-transparent text-bone placeholder:text-faint outline-none font-data text-sm resize-none leading-relaxed break-all disabled:text-faint"
                 rows={2}
                 spellCheck={false}
                 placeholder="zcowl:0x…"
                 value={to}
+                disabled={!LIVE}
                 onChange={(e) => setTo(e.target.value)}
               />
             </div>
 
             {/* What this costs, and what it shows */}
-            {value > 0n && (
+            {(!LIVE || value > 0n) && (
               <div className="mt-3 px-1 space-y-2 fade-up">
                 <Row k="On chain" v="two nullifiers, two commitments" />
                 <Row k="Amount" v="stays inside the pool" accent />
@@ -282,7 +297,11 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
 
             {/* Action */}
             <div className="mt-4">
-              {!wallet.address ? (
+              {!LIVE ? (
+                <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">
+                  Private send coming soon
+                </button>
+              ) : !wallet.address ? (
                 <button
                   onClick={wallet.connect}
                   disabled={wallet.connecting}
@@ -313,13 +332,32 @@ export default function SendCard({ wallet }: { wallet: WalletState }) {
         )}
       </div>
 
+      {/* Footer note */}
       <p className="text-center text-xs text-faint mt-4">
-        {tab === "send"
-          ? "A note changes hands. The chain sees a spend, never the two ends of it."
-          : "One address, reusable, and it never names your wallet."}
+        {LIVE ? (
+          tab === "send" ? (
+            "A note changes hands. The chain sees a spend, never the two ends of it."
+          ) : (
+            "One address, reusable, and it never names your wallet."
+          )
+        ) : (
+          <>
+            <Link href="/shield" className="text-muted hover:text-bone transition-colors">
+              Shield and unshield
+            </Link>{" "}
+            are live today, and{" "}
+            <a
+              href="https://cowlprotocol.com/docs"
+              className="text-muted hover:text-bone transition-colors"
+            >
+              the cowl CLI
+            </a>{" "}
+            pays a zcowl address right now.
+          </>
+        )}
       </p>
 
-      {token && (
+      {LIVE && token && (
         <SendConfirmModal
           open={confirming}
           symbol={token.symbol}
@@ -381,16 +419,9 @@ function LockedPanel({
   );
 }
 
-function ReceivePanel({
-  copied,
-  onCopy,
-}: {
-  copied: boolean;
-  onCopy: (text: string) => void;
-}) {
+function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: string) => void }) {
   const shielded = useShielded();
-  const address = shielded.paymentAddress;
-  if (!address) return null;
+  const address = LIVE ? shielded.paymentAddress : null;
 
   return (
     <>
@@ -400,46 +431,58 @@ function ReceivePanel({
             <MaskLogo className="h-2 w-auto text-acid" />
             Your payment address
           </span>
-          <button onClick={() => onCopy(address)} className="label-soft text-muted hover:text-bone shrink-0">
-            {copied ? "Copied" : "Copy"}
-          </button>
+          {address && (
+            <button onClick={() => onCopy(address)} className="label-soft text-muted hover:text-bone shrink-0">
+              {copied ? "Copied" : "Copy"}
+            </button>
+          )}
         </div>
-        <code className="block font-data text-[0.72rem] text-bone break-all leading-relaxed">{address}</code>
+        <code className={`block font-data text-[0.72rem] break-all leading-relaxed ${address ? "text-bone" : "text-faint"}`}>
+          {address ?? "zcowl:0x…"}
+        </code>
       </div>
 
       <div className="mt-3 px-1 space-y-2">
         <Row k="Reusable" v="the same address, every payment" />
         <Row k="Your wallet" v="never appears in it" accent />
-        <Row k="Senders" v="pay from this app or the terminal" />
+        <Row k="Senders" v="the cowl CLI pays it today" />
       </div>
 
-      <div className="bg-ink2 p-4 mt-3">
-        <div className="flex items-center justify-between mb-2 gap-3">
-          <span className="label-soft text-faint">What has arrived</span>
-          <button onClick={() => shielded.refresh()} className="label-soft text-muted hover:text-bone">
-            {shielded.syncing ? "Scanning…" : "Scan for payments"}
+      {address ? (
+        <div className="bg-ink2 p-4 mt-3">
+          <div className="flex items-center justify-between mb-2 gap-3">
+            <span className="label-soft text-faint">What has arrived</span>
+            <button onClick={() => shielded.refresh()} className="label-soft text-muted hover:text-bone">
+              {shielded.syncing ? "Scanning…" : "Scan for payments"}
+            </button>
+          </div>
+          {shielded.balances.length === 0 ? (
+            <p className="text-xs text-muted leading-relaxed">
+              Nothing yet. A payment lands here the moment its sender&apos;s transaction does.
+            </p>
+          ) : (
+            <div className="space-y-1">
+              {shielded.balances.map((b) => {
+                const meta = tokenMetaForField(b.token);
+                return (
+                  <div key={b.token.toString()} className="flex items-center justify-between bg-ink px-3 py-2.5">
+                    <span className="text-sm text-bone">{meta.symbol}</span>
+                    <span className="font-data text-sm text-acid">
+                      {formatUnitsExact(b.amount, meta.decimals)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-4">
+          <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">
+            Private receive coming soon
           </button>
         </div>
-        {shielded.balances.length === 0 ? (
-          <p className="text-xs text-muted leading-relaxed">
-            Nothing yet. A payment lands here the moment its sender's transaction does.
-          </p>
-        ) : (
-          <div className="space-y-1">
-            {shielded.balances.map((b) => {
-              const meta = tokenMetaForField(b.token);
-              return (
-                <div key={b.token.toString()} className="flex items-center justify-between bg-ink px-3 py-2.5">
-                  <span className="text-sm text-bone">{meta.symbol}</span>
-                  <span className="font-data text-sm text-acid">
-                    {formatUnitsExact(b.amount, meta.decimals)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      )}
     </>
   );
 }

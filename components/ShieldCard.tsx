@@ -358,8 +358,17 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               />
             )}
             {exact && <Row k="Boundary" v="exact amount · 1 transaction" />}
-            {spread && <Row k="Spread" v={`${spread} window · random moments · runs from the CLI`} />}
-            <Row k="Proving" v="In your browser" accent />
+            {spread ? (
+              <>
+                <Row k="Spread" v={`${spread} window · random moments`} />
+                {/* A window that outlives this tab cannot be driven from it, so
+                    the whole run moves to the terminal — including the proving,
+                    which the row below would otherwise still claim for the browser. */}
+                <Row k="Runs from" v="The cowl CLI" accent />
+              </>
+            ) : (
+              <Row k="Proving" v="In your browser" accent />
+            )}
             <Row k="Gas payer" v={mode === "shield" ? "You, per deposit" : "You, per withdrawal"} />
           </div>
         )}

@@ -150,10 +150,16 @@ function NavMenu({ pathname }: { pathname: string }) {
  * Hangs off the top-right corner of the label it marks, out of the flow — a
  * gated destination reads the same width as a live one, so adding or opening
  * one never re-spaces the nav.
+ *
+ * The size comes from a transform rather than a smaller font-size: browsers
+ * enforce a minimum font size (Chrome clamps around 6px by default), so past
+ * that point shrinking the number changes nothing on screen. Scaling shrinks
+ * the pill and its padding together, below the floor, and anchoring the
+ * origin at the corner keeps it pinned where it belongs.
  */
 function SoonTag() {
   return (
-    <span className="absolute -top-2 -right-2.5 label-soft text-[0.3rem] tracking-[0.08em] text-faint bg-ink3 rounded-full px-[0.3rem] py-[0.12rem] leading-none pointer-events-none">
+    <span className="absolute -top-2 -right-2 origin-top-right scale-[0.6] label-soft text-[0.5rem] tracking-[0.08em] text-faint bg-ink3 rounded-full px-[0.4rem] py-[0.18rem] leading-none pointer-events-none">
       Soon
     </span>
   );

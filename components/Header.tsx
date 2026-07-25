@@ -38,7 +38,7 @@ export default function Header({ wallet }: { wallet: WalletState }) {
             return (
               <span key={l.href} className="relative">
                 {active ? (
-                  <span className="label-mono text-[0.72rem] text-bone border-b border-acid pb-0.5">
+                  <span className="label-mono text-[0.72rem] text-acid border-b border-acid pb-0.5">
                     {l.label}
                   </span>
                 ) : (
@@ -109,7 +109,7 @@ function NavMenu({ pathname }: { pathname: string }) {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex items-center gap-2 label-mono text-[0.72rem] text-bone px-3.5 py-2.5 bg-[#1c2027] hover:bg-[#242932] transition-colors"
+        className="flex items-center gap-2 label-mono text-[0.72rem] text-acid px-3.5 py-2.5 bg-[#1c2027] hover:bg-[#242932] transition-colors"
       >
         {current?.label ?? "Menu"}
         <Chevron open={open} />

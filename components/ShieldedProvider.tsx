@@ -25,6 +25,7 @@ import {
 } from "react";
 import { useAccount, useSignMessage, useWalletClient } from "wagmi";
 import { activeNetwork } from "@/lib/networks";
+import { planDelays } from "@/lib/spread";
 import { deriveShieldedKeysFromSignature, SHIELDED_SIGN_MESSAGE, type ShieldedKeys } from "@/lib/shielded/keys";
 import { commitment, newNote } from "@/lib/shielded/note";
 import { encryptNote, packCipher } from "@/lib/shielded/crypto";
@@ -47,7 +48,7 @@ const net = activeNetwork();
 
 export type ShieldedStatus = "locked" | "unlocking" | "ready";
 
-export type OpStep = "sync" | "prove" | "confirm" | "mined";
+export type OpStep = "unlock" | "wait" | "sync" | "prove" | "confirm" | "mined";
 
 export type OpProgress = {
   op: "shield" | "unshield";
@@ -59,6 +60,8 @@ export type OpProgress = {
   txs: { hash: string; part: number }[];
   done: boolean;
   error?: string;
+  /** When the current spread wait ends, so the modal can count down to it. */
+  waitUntil?: number;
 };
 
 type ShieldedContextValue = {
@@ -79,12 +82,15 @@ type ShieldedContextValue = {
     tokenAddress: `0x${string}` | null;
     symbol: string;
     decimals: number;
+    /** Scatter the parts across this many milliseconds. */
+    spreadMs?: number | null;
   }) => Promise<void>;
   unshieldExec: (args: {
     parts: bigint[];
     tokenField: bigint;
     symbol: string;
     decimals: number;
+    spreadMs?: number | null;
   }) => Promise<void>;
 };
 
@@ -102,6 +108,21 @@ function opError(e: unknown): string {
   if (/user rejected|denied|rejected the request/i.test(msg)) return "Rejected in the wallet.";
   const line = msg.split("\n")[0] ?? msg;
   return line.length > 180 ? line.slice(0, 177) + "…" : line;
+}
+
+/**
+ * Hold before a part, so a spread's window is actually observed.
+ *
+ * The wait is published with the moment it ends rather than a countdown of its
+ * own: a tab that gets throttled in the background stops ticking, and a clock
+ * read from the end time stays honest through that.
+ */
+async function holdFor(ms: number, prog: OpProgress, publish: () => void): Promise<void> {
+  if (ms <= 0) return;
+  prog.step = "wait";
+  prog.waitUntil = Date.now() + ms;
+  publish();
+  await new Promise((r) => setTimeout(r, ms));
 }
 
 /** True when a failure smells like the root moved under us — resync and reprove. */
@@ -128,6 +149,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   // Keys belong to the wallet that signed them; a different account locks the book.
   useEffect(() => {
     if (keys && derivedFor && address !== derivedFor) {
+      keysRef.current = null;
       setKeys(null);
       setDerivedFor(null);
       setStatus("locked");
@@ -156,23 +178,43 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
     [scanAndPublish],
   );
 
-  const unlock = useCallback(async () => {
+  const keysRef = useRef<ShieldedKeys | null>(null);
+  keysRef.current = keys;
+
+  /**
+   * The unlocked account, deriving it first if this session has not yet.
+   *
+   * Callers reach for the keys when they need them rather than being made to
+   * unlock in advance: the signature is a step of the operation, not a gate in
+   * front of it. Viewing a shielded balance needs it too, which is the one
+   * place the button still appears.
+   */
+  const ensureKeys = useCallback(async (): Promise<ShieldedKeys> => {
+    const existing = keysRef.current;
+    if (existing) return existing;
     if (!address) throw new Error("Connect a wallet first.");
     setStatus("unlocking");
     try {
       const sig = await signMessageAsync({ message: SHIELDED_SIGN_MESSAGE });
       const k = deriveShieldedKeysFromSignature(sig);
+      keysRef.current = k;
       setKeys(k);
       setDerivedFor(address);
       setStatus("ready");
-      await refreshWith(k);
+      return k;
     } catch (e) {
       setStatus("locked");
       throw e;
     }
-  }, [address, signMessageAsync, refreshWith]);
+  }, [address, signMessageAsync]);
+
+  const unlock = useCallback(async () => {
+    const k = await ensureKeys();
+    await refreshWith(k);
+  }, [ensureKeys, refreshWith]);
 
   const lock = useCallback(() => {
+    keysRef.current = null;
     setKeys(null);
     setDerivedFor(null);
     setStatus("locked");
@@ -193,17 +235,18 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   // ---- executors ------------------------------------------------------------
 
   const shieldExec = useCallback<ShieldedContextValue["shieldExec"]>(
-    async ({ parts, tokenField, tokenAddress, symbol, decimals }) => {
-      const k = keys;
+    async ({ parts, tokenField, tokenAddress, symbol, decimals, spreadMs }) => {
       const wc = walletClientRef.current;
-      if (!k) throw new Error("Unlock the shielded account first.");
       if (!wc) throw new Error("Connect a wallet first.");
 
-      const prog: OpProgress = { op: "shield", symbol, decimals, parts, current: 0, step: "sync", txs: [], done: false };
+      const prog: OpProgress = { op: "shield", symbol, decimals, parts, current: 0, step: "unlock", txs: [], done: false };
       const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
       publish();
 
+      const delays = spreadMs ? planDelays(parts.length, spreadMs) : parts.map(() => 0);
+
       try {
+        const k = await ensureKeys();
         // One exact approval covers the whole batch on the ERC-20 path.
         if (tokenField !== 0n && tokenAddress) {
           prog.step = "confirm";
@@ -214,8 +257,10 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
         for (let i = 0; i < parts.length; i++) {
           prog.current = i;
+          await holdFor(delays[i] ?? 0, prog, publish);
           for (let attempt = 0; ; attempt++) {
             prog.step = "sync";
+            prog.waitUntil = undefined;
             publish();
             const sync = await syncShieldedPool();
             if (!sync) throw new Error(`No shielded pool on ${net.label}.`);
@@ -266,33 +311,38 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
         scanAndPublish(k);
         prog.done = true;
+        prog.waitUntil = undefined;
         publish();
       } catch (e) {
         prog.error = opError(e);
+        prog.waitUntil = undefined;
         publish();
         throw e;
       }
     },
-    [keys, scanAndPublish],
+    [ensureKeys, scanAndPublish],
   );
 
   const unshieldExec = useCallback<ShieldedContextValue["unshieldExec"]>(
-    async ({ parts, tokenField, symbol, decimals }) => {
-      const k = keys;
+    async ({ parts, tokenField, symbol, decimals, spreadMs }) => {
       const wc = walletClientRef.current;
-      if (!k) throw new Error("Unlock the shielded account first.");
       if (!wc?.account) throw new Error("Connect a wallet first.");
       const payout = BigInt(wc.account.address);
 
-      const prog: OpProgress = { op: "unshield", symbol, decimals, parts, current: 0, step: "sync", txs: [], done: false };
+      const prog: OpProgress = { op: "unshield", symbol, decimals, parts, current: 0, step: "unlock", txs: [], done: false };
       const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
       publish();
 
+      const delays = spreadMs ? planDelays(parts.length, spreadMs) : parts.map(() => 0);
+
       try {
+        const k = await ensureKeys();
         for (let i = 0; i < parts.length; i++) {
           prog.current = i;
+          await holdFor(delays[i] ?? 0, prog, publish);
           for (let attempt = 0; ; attempt++) {
             prog.step = "sync";
+            prog.waitUntil = undefined;
             publish();
             const sync = await syncShieldedPool();
             if (!sync) throw new Error(`No shielded pool on ${net.label}.`);
@@ -341,14 +391,16 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
         scanAndPublish(k);
         prog.done = true;
+        prog.waitUntil = undefined;
         publish();
       } catch (e) {
         prog.error = opError(e);
+        prog.waitUntil = undefined;
         publish();
         throw e;
       }
     },
-    [keys, scanAndPublish],
+    [ensureKeys, scanAndPublish],
   );
 
   const value = useMemo<ShieldedContextValue>(

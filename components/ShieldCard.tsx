@@ -5,6 +5,7 @@ import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { decompose, groupParts, MAX_BOUNDARY_TXS, tiersFor } from "@/lib/denominations";
 import { formatBalance, formatUnitsExact, USD } from "@/lib/prices";
+import { parseWindow } from "@/lib/spread";
 import { shortAddr, type useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
 import { useShielded } from "./ShieldedProvider";
@@ -86,14 +87,22 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
       : unlocked && requiredTotal > shieldedBal;
   const belowTier = !exact && value > 0n && parts.length === 0;
   const tooMany = !exact && parts.length > MAX_BOUNDARY_TXS;
+  const needsUnlockFirst = mode === "unshield" && !unlocked;
   const ready =
-    !!wallet.address && !wallet.wrongNetwork && amt > 0 && !insufficient && !belowTier && !tooMany;
+    !!wallet.address &&
+    !wallet.wrongNetwork &&
+    amt > 0 &&
+    !insufficient &&
+    !belowTier &&
+    !tooMany &&
+    !needsUnlockFirst;
 
   let label = "Enter an amount";
   if (amt > 0) label = mode === "shield" ? "Review shield" : "Review unshield";
   if (belowTier) label = `Below the ${fmtUnits(smallestTier, token.decimals)} tier · go Exact`;
   if (tooMany) label = "Round the amount, or go Exact";
   if (insufficient) label = `Insufficient ${mode === "shield" ? "" : "shielded "}${token.symbol}`;
+  if (needsUnlockFirst) label = "Unlock to see what you can withdraw";
 
   const pick = (t: Token) => {
     setToken(t);
@@ -125,6 +134,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
       tokenField,
       symbol: token.symbol,
       decimals: token.decimals,
+      spreadMs: parseWindow(spread),
     };
     const run =
       mode === "shield"
@@ -162,7 +172,13 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           )}
         </>
       ) : (
-        <span>locked</span>
+        <button
+          onClick={unlock}
+          disabled={shielded.status === "unlocking" || !wallet.address}
+          className="text-muted hover:text-bone font-data disabled:text-faint"
+        >
+          {shielded.status === "unlocking" ? "check your wallet…" : "unlock to view"}
+        </button>
       )}
     </span>
   );
@@ -358,17 +374,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               />
             )}
             {exact && <Row k="Boundary" v="exact amount · 1 transaction" />}
-            {spread ? (
-              <>
-                <Row k="Spread" v={`${spread} window · random moments`} />
-                {/* A window that outlives this tab cannot be driven from it, so
-                    the whole run moves to the terminal — including the proving,
-                    which the row below would otherwise still claim for the browser. */}
-                <Row k="Runs from" v="The cowl CLI" accent />
-              </>
-            ) : (
-              <Row k="Proving" v="In your browser" accent />
-            )}
+            {spread && <Row k="Spread" v={`${spread} window · random moments · keep this tab open`} />}
+            <Row k="Proving" v="In your browser" accent />
             <Row k="Gas payer" v={mode === "shield" ? "You, per deposit" : "You, per withdrawal"} />
           </div>
         )}
@@ -389,14 +396,6 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               className="w-full label-mono text-sm py-4 bg-[#3a1414] text-[#ff6b6b] hover:bg-[#4a1818] transition-colors"
             >
               Switch to {wallet.network.label}
-            </button>
-          ) : !unlocked ? (
-            <button
-              onClick={unlock}
-              disabled={shielded.status === "unlocking"}
-              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
-            >
-              {shielded.status === "unlocking" ? "Check your wallet…" : "Unlock shielded account"}
             </button>
           ) : (
             <button

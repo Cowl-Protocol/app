@@ -5,9 +5,10 @@
 // worker, confirm in the wallet, wait for the receipt, part by part) and this
 // modal renders that progress live. A timed spread has to keep firing after
 // the tab sleeps, so that one stays a CLI job and the modal says so.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatUnits } from "viem";
 import { activeNetwork } from "@/lib/networks";
+import { formatRemaining } from "@/lib/spread";
 import type { Token } from "@/lib/tokens";
 import type { OpProgress, OpStep } from "./ShieldedProvider";
 import { TokenGlyph } from "./TokenModal";
@@ -46,6 +47,8 @@ const STEPS: Record<BoundaryMode, { k: string; d: string }[]> = {
 };
 
 const STEP_LABEL: Record<OpStep, string> = {
+  unlock: "sign to unlock in your wallet",
+  wait: "waiting",
   sync: "syncing the pool",
   prove: "proving in your browser",
   confirm: "confirm in your wallet",
@@ -67,6 +70,17 @@ export default function BoundaryConfirmModal({
   onClose,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [, tick] = useState(0);
+
+  // A visible countdown needs a local heartbeat; the value it renders still
+  // comes from the end time the run published, never from counting frames.
+  const waitUntil = progress?.waitUntil;
+  useEffect(() => {
+    if (!waitUntil) return;
+    const id = setInterval(() => tick((n) => n + 1), 500);
+    return () => clearInterval(id);
+  }, [waitUntil]);
+
   if (!open) return null;
 
   const net = activeNetwork();
@@ -169,7 +183,9 @@ export default function BoundaryConfirmModal({
                     ) : isCurrent ? (
                       <span className="font-data text-xs text-muted">
                         <span className="inline-block h-2.5 w-2.5 mr-2 align-middle border-2 border-acid border-t-transparent rounded-full spin" />
-                        {STEP_LABEL[progress.step]}
+                        {progress.step === "wait" && progress.waitUntil
+                          ? `firing in ${formatRemaining(progress.waitUntil - Date.now())}`
+                          : STEP_LABEL[progress.step]}
                       </span>
                     ) : (
                       <span className="font-data text-xs text-faint">waiting</span>
@@ -256,37 +272,27 @@ export default function BoundaryConfirmModal({
               </span>
             </div>
 
-            {spread ? (
-              <div className="bg-ink2 p-4">
-                <p className="text-xs text-muted leading-relaxed">
-                  A timed spread keeps firing after this tab sleeps, so it runs from the terminal:
-                </p>
-                <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
-                  <code className="font-data text-[0.8rem] text-acid break-all">{cliCmd}</code>
-                  <button onClick={copy} className="label-soft text-muted hover:text-bone shrink-0 ml-3">
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <button
-                  onClick={onExecute}
-                  className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
-                >
-                  {verb} now
-                </button>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[0.7rem] text-faint shrink-0">Prefer the terminal?</span>
-                  <span className="flex items-center gap-2 min-w-0">
-                    <code className="font-data text-[0.7rem] text-muted truncate">{cliCmd}</code>
-                    <button onClick={copy} className="label-soft text-faint hover:text-bone shrink-0">
-                      {copied ? "Copied" : "Copy"}
-                    </button>
-                  </span>
-                </div>
-              </>
+            {spread && (
+              <p className="text-[0.7rem] text-faint leading-relaxed">
+                The parts fire at random moments across {spread}, so keep this tab open until the
+                last one lands. The terminal can carry a long window instead.
+              </p>
             )}
+            <button
+              onClick={onExecute}
+              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
+            >
+              {verb} now
+            </button>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[0.7rem] text-faint shrink-0">Prefer the terminal?</span>
+              <span className="flex items-center gap-2 min-w-0">
+                <code className="font-data text-[0.7rem] text-muted truncate">{cliCmd}</code>
+                <button onClick={copy} className="label-soft text-faint hover:text-bone shrink-0">
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </span>
+            </div>
           </div>
         )}
       </div>

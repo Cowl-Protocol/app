@@ -36,7 +36,7 @@ export default function Header({ wallet }: { wallet: WalletState }) {
           {LINKS.map((l) => {
             const active = pathname === l.href;
             return (
-              <span key={l.href} className="flex items-center gap-1.5">
+              <span key={l.href} className="relative">
                 {active ? (
                   <span className="label-mono text-[0.72rem] text-bone border-b border-acid pb-0.5">
                     {l.label}
@@ -124,12 +124,14 @@ function NavMenu({ pathname }: { pathname: string }) {
                 key={l.href}
                 href={l.href}
                 onClick={() => setOpen(false)}
-                className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-ink3"
+                className="flex items-center px-4 py-3 transition-colors hover:bg-ink3"
               >
-                <span className={`label-mono text-[0.72rem] ${active ? "text-acid" : "text-bone"}`}>
-                  {l.label}
+                <span className="relative">
+                  <span className={`label-mono text-[0.72rem] ${active ? "text-acid" : "text-bone"}`}>
+                    {l.label}
+                  </span>
+                  {l.soon && <SoonTag />}
                 </span>
-                {l.soon && <SoonTag />}
               </Link>
             );
           })}
@@ -146,9 +148,14 @@ function NavMenu({ pathname }: { pathname: string }) {
   );
 }
 
+/**
+ * Hangs off the top-right corner of the label it marks, out of the flow — a
+ * gated destination reads the same width as a live one, so adding or opening
+ * one never re-spaces the nav.
+ */
 function SoonTag() {
   return (
-    <span className="label-soft text-[0.5rem] text-faint bg-ink2 px-1 py-0.5 leading-none shrink-0">
+    <span className="absolute -top-2 -right-2.5 label-soft text-[0.48rem] text-faint bg-ink2 px-1 py-0.5 leading-none pointer-events-none">
       Soon
     </span>
   );

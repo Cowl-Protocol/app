@@ -53,6 +53,7 @@ const STEP_LABEL: Record<OpStep, string> = {
   prove: "proving in your browser",
   confirm: "confirm in your wallet",
   mined: "landed",
+  record: "filing your note",
 };
 
 export default function BoundaryConfirmModal({
@@ -151,7 +152,10 @@ export default function BoundaryConfirmModal({
           <div className="px-5 py-5 space-y-2">
             {progress.parts.map((p, i) => {
               const tx = progress.txs.find((t) => t.part === i);
-              const isCurrent = i === progress.current && !progress.done && !progress.error;
+              // Filing happens after the money has moved, so the row keeps its
+              // hash and the footer carries the fact that work is still going.
+              const isCurrent =
+                i === progress.current && !progress.done && !progress.error && progress.step !== "record";
               const isDone = !!tx;
               const failedHere = !!progress.error && i === progress.current;
               return (
@@ -195,6 +199,12 @@ export default function BoundaryConfirmModal({
               );
             })}
 
+            {running && progress.step === "record" && (
+              <p className="flex items-center gap-2 text-[0.7rem] text-muted leading-relaxed pt-1">
+                <span className="inline-block h-2.5 w-2.5 border-2 border-acid border-t-transparent rounded-full spin" />
+                Filing your notes. The funds are already in the pool.
+              </p>
+            )}
             {running && (
               <p className="text-[0.7rem] text-faint leading-relaxed pt-1">
                 Keep this tab open until the last part lands.

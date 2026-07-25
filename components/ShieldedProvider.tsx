@@ -48,7 +48,7 @@ const net = activeNetwork();
 
 export type ShieldedStatus = "locked" | "unlocking" | "ready";
 
-export type OpStep = "unlock" | "wait" | "sync" | "prove" | "confirm" | "mined";
+export type OpStep = "unlock" | "wait" | "sync" | "prove" | "confirm" | "mined" | "record";
 
 export type OpProgress = {
   op: "shield" | "unshield";
@@ -109,6 +109,23 @@ function opError(e: unknown): string {
   const line = msg.split("\n")[0] ?? msg;
   return line.length > 180 ? line.slice(0, 177) + "…" : line;
 }
+
+/**
+ * Give a promise a deadline, resolving to null when it misses it.
+ *
+ * Used for the bookkeeping that follows a landed deposit. That work reads the
+ * pool's whole event log, which on the endpoint that serves history can take
+ * minutes under a rate limit, and none of it decides where the money is: the
+ * chain already moved it and the note's blinding was written down before the
+ * transaction went out. Waiting on it indefinitely only leaves a finished run
+ * looking stuck.
+ */
+async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([work, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+}
+
+/** How long the post-deposit filing may take before the run moves on. */
+const RECORD_DEADLINE = 25_000;
 
 /**
  * Hold before a part, so a spread's window is actually observed.
@@ -306,12 +323,22 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
               prog.txs.push({ hash: receipt.hash, part: i });
               publish();
 
-              const after = await syncShieldedPool();
-              if (after) {
-                const w2 = loadWallet(net.key, k);
-                recordMyNote(after.pool, w2, k, note, receipt.leafIndex);
-                savePool(net.key, after.pool);
-                saveWallet(net.key, k, w2);
+              // The deposit is on chain and its blinding is already stashed, so
+              // filing it against a leaf is bookkeeping the next scan can redo.
+              // It gets a deadline and its failures are swallowed on purpose:
+              // this used to be able to strand a run that had fully succeeded.
+              prog.step = "record";
+              publish();
+              try {
+                const after = await withDeadline(syncShieldedPool(), RECORD_DEADLINE);
+                if (after) {
+                  const w2 = loadWallet(net.key, k);
+                  recordMyNote(after.pool, w2, k, note, receipt.leafIndex);
+                  savePool(net.key, after.pool);
+                  saveWallet(net.key, k, w2);
+                }
+              } catch {
+                // The note stays pending; a later scan adopts it by commitment.
               }
               break;
             } catch (e) {
@@ -392,7 +419,9 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
               prog.txs.push({ hash: receipt.hash, part: i });
               publish();
 
-              await syncShieldedPool();
+              prog.step = "record";
+              publish();
+              await withDeadline(syncShieldedPool(), RECORD_DEADLINE).catch(() => null);
               break;
             } catch (e) {
               if (isStaleRoot(e) && attempt < 2) continue; // root moved — replan

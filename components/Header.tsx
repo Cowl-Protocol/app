@@ -122,14 +122,15 @@ function NavMenu({ pathname }: { pathname: string }) {
                 key={l.href}
                 href={l.href}
                 onClick={() => setOpen(false)}
-                className="flex items-center px-4 py-3 transition-colors hover:bg-ink3"
+                className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-ink3"
               >
-                <span className="relative">
-                  <span className={`label-mono text-[0.72rem] ${active ? "text-acid" : "text-bone"}`}>
-                    {l.label}
-                  </span>
-                  {l.soon && <SoonTag />}
+                <span className={`label-mono text-[0.72rem] ${active ? "text-acid" : "text-bone"}`}>
+                  {l.label}
                 </span>
+                {/* A row has a right edge of its own, so the mark sits there as
+                    plain text. The corner pill is for the inline nav, where
+                    there is no row to hold it. */}
+                {l.soon && <span className="label-soft text-[0.5rem] text-faint shrink-0">Soon</span>}
               </Link>
             );
           })}

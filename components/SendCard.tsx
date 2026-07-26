@@ -346,7 +346,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
       {/* Footer note */}
       <p className="text-center text-xs text-faint mt-4">
         {tab === "receive"
-          ? "One address, reusable, and it never names your wallet."
+          ? "Whoever pays it learns nothing about you."
           : "A note changes hands. The chain sees a spend, never the two ends of it."}
       </p>
 
@@ -463,7 +463,7 @@ function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: stri
       )}
 
       <div className="mt-3 px-1 space-y-2">
-        <Row k="Reusable" v="the same address, every payment" />
+        <Row k="Reusable" v="never needs rotating" />
         <Row k="Your wallet" v="never appears in it" accent />
         <Row k="Senders" v="this app and the cowl CLI both pay it" />
       </div>

@@ -95,13 +95,20 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const { quote: relay } = useRelayQuote(tokenField, mode === "unshield");
   const gasless = mode === "unshield" && !!relay;
 
+  // The relayer's fee is paid out of the same notes, once per part, so it is
+  // part of what the book has to cover. Leaving it out let an amount pass every
+  // check on screen and then fail at planning, with the notes short by exactly
+  // the fee nobody had counted.
+  const relayFeeTotal = gasless && relay ? relay.fee * BigInt(execParts.length) : 0n;
+  const drawnFromNotes = requiredTotal + relayFeeTotal;
+
   const amt = parseFloat(amount) || 0;
   const balUnknown = publicBal === null;
   const bal = parseFloat(publicBal ?? "0") || 0;
   const insufficient =
     mode === "shield"
       ? !!wallet.address && !balUnknown && amt > bal
-      : unlocked && requiredTotal > shieldedBal;
+      : unlocked && drawnFromNotes > shieldedBal;
   const belowTier = !exact && value > 0n && parts.length === 0;
   const tooMany = !exact && parts.length > MAX_BOUNDARY_TXS;
   const needsUnlockFirst = mode === "unshield" && !unlocked;
@@ -126,7 +133,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         ? `Shared tops out at ${fmtUnits(cap, token.decimals)} ${token.symbol} · go Exact`
         : "Round the amount, or go Exact";
   }
-  if (insufficient) label = `Insufficient ${mode === "shield" ? "" : "shielded "}${token.symbol}`;
+  if (insufficient) {
+    label =
+      gasless && relayFeeTotal > 0n && requiredTotal <= shieldedBal
+        ? `Not enough for the amount plus the relayer fee`
+        : `Insufficient ${mode === "shield" ? "" : "shielded "}${token.symbol}`;
+  }
   if (needsUnlockFirst) label = "Unlock to see what you can withdraw";
 
   const pick = (t: Token) => {
@@ -453,11 +465,26 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               v={gasless ? "The relayer" : mode === "shield" ? "You, per deposit" : "You, per withdrawal"}
               accent={gasless}
             />
+            {/* The arithmetic in full. A fee taken out of the same notes changes
+                what leaves the book, and a number that only appears after the
+                fact is a number nobody agreed to. */}
             {gasless && relay && (
-              <Row
-                k="Relayer fee"
-                v={`${fmtUnits(relay.fee * BigInt(execParts.length), token.decimals)} ${token.symbol}, from your notes`}
-              />
+              <>
+                <Row k="You receive" v={`${fmtUnits(requiredTotal, token.decimals)} ${token.symbol}`} />
+                <Row
+                  k="Relayer fee"
+                  v={`${fmtUnits(relayFeeTotal, token.decimals)} ${token.symbol}${
+                    execParts.length > 1
+                      ? ` · ${execParts.length} × ${fmtUnits(relay.fee, token.decimals)}`
+                      : ""
+                  }`}
+                />
+                <Row
+                  k="Leaves your notes"
+                  v={`${fmtUnits(drawnFromNotes, token.decimals)} ${token.symbol}`}
+                  accent
+                />
+              </>
             )}
           </div>
         )}
@@ -555,11 +582,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         exact={exact}
         spread={spread ?? undefined}
         gasless={gasless}
-        relayFee={
-          gasless && relay
-            ? `${fmtUnits(relay.fee * BigInt(execParts.length), token.decimals)} ${token.symbol}`
-            : undefined
-        }
+        relayFee={gasless ? `${fmtUnits(relayFeeTotal, token.decimals)} ${token.symbol}` : undefined}
+        relayDrawn={gasless ? `${fmtUnits(drawnFromNotes, token.decimals)} ${token.symbol}` : undefined}
         progress={shielded.progress}
         onExecute={execute}
         onClose={closeConfirm}

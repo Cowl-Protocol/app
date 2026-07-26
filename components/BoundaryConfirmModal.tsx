@@ -30,6 +30,8 @@ type Props = {
   gasless?: boolean;
   /** The relayer's total fee for the run, already formatted with its symbol. */
   relayFee?: string;
+  /** What actually leaves the shielded book: the amount plus that fee. */
+  relayDrawn?: string;
   /** Live run state from the shielded context, when a run is under way. */
   progress: OpProgress | null;
   onExecute: () => void;
@@ -61,6 +63,7 @@ export default function BoundaryConfirmModal({
   spread,
   gasless,
   relayFee,
+  relayDrawn,
   progress,
   onExecute,
   onClose,
@@ -236,11 +239,25 @@ export default function BoundaryConfirmModal({
               </span>
             </div>
             {gasless && (
-              <p className="text-[0.7rem] text-faint leading-relaxed">
-                The relayer submits and pays the gas, so the chain records it and not your wallet.
-                Its fee{relayFee ? ` of ${relayFee}` : ""} comes out of the notes you are
-                spending, bound into the proof before anything moves.
-              </p>
+              <>
+                {relayFee && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-faint font-data">Relayer fee</span>
+                    <span className="font-data text-muted">{relayFee}</span>
+                  </div>
+                )}
+                {relayDrawn && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-faint font-data">Leaves your notes</span>
+                    <span className="font-data text-acid">{relayDrawn}</span>
+                  </div>
+                )}
+                <p className="text-[0.7rem] text-faint leading-relaxed">
+                  The relayer submits and pays the gas, so the chain records it and not your
+                  wallet. Its fee comes out of the same notes and is bound into the proof before
+                  anything moves, so it cannot charge more than the figure above.
+                </p>
+              </>
             )}
 
             {spread && (

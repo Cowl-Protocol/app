@@ -20,7 +20,7 @@ import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
 import { TOKENS, tokenMetaForField } from "@/lib/tokens";
 import type { useWallet } from "@/lib/useWallet";
-import { useShielded } from "./ShieldedProvider";
+import { useShielded, type OpProgress } from "./ShieldedProvider";
 import SendConfirmModal from "./SendConfirmModal";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
@@ -51,6 +51,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   const [to, setTo] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [merging, setMerging] = useState(false);
   const [copied, setCopied] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   // Bumped when the chain names a token the book was showing as a bare address.
@@ -173,6 +174,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   const merge = () => {
     if (!token) return;
     shielded.clearProgress();
+    setMerging(true);
     shielded
       .consolidateExec({ tokenField: token.field, symbol: token.symbol, decimals, target: value })
       .catch(() => {});
@@ -347,7 +349,16 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   disabled={wallet.connecting}
                   className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
                 >
-                  {wallet.connecting ? "Connecting…" : wallet.hasWallet ? "Connect wallet" : "Get a wallet"}
+                  {wallet.connecting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Spinner className="h-3 w-3" />
+                    Connecting
+                  </span>
+                ) : wallet.hasWallet ? (
+                  "Connect wallet"
+                ) : (
+                  "Get a wallet"
+                )}
                 </button>
               ) : wallet.wrongNetwork ? (
                 <button
@@ -417,6 +428,19 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
           onClose={closeConfirm}
         />
       )}
+
+      {/* Merging is a run of real transactions, one per round. Without a panel
+          of its own the wallet popped up over a card that looked idle. */}
+      {token && merging && (
+        <MergeProgressModal
+          symbol={token.symbol}
+          progress={shielded.progress}
+          onClose={() => {
+            setMerging(false);
+            shielded.clearProgress();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -449,7 +473,14 @@ function LockedPanel({
             disabled={status === "unlocking"}
             className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
           >
-            {status === "unlocking" ? "Check your wallet…" : "Unlock shielded account"}
+            {status === "unlocking" ? (
+              <span className="flex items-center justify-center gap-2">
+                <Spinner className="h-3 w-3" />
+                Check your wallet
+              </span>
+            ) : (
+              "Unlock shielded account"
+            )}
           </button>
         ) : (
           <button
@@ -457,7 +488,14 @@ function LockedPanel({
             disabled={wallet.connecting}
             className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
           >
-            {wallet.connecting ? "Connecting…" : "Connect wallet"}
+            {wallet.connecting ? (
+              <span className="flex items-center justify-center gap-2">
+                <Spinner className="h-3 w-3" />
+                Connecting
+              </span>
+            ) : (
+              "Connect wallet"
+            )}
           </button>
         )}
         {error && <p className="text-xs text-[#ff6b6b] mt-2 text-center">{error}</p>}
@@ -509,7 +547,14 @@ function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: stri
           <div className="flex items-center justify-between mb-2 gap-3">
             <span className="label-soft text-faint">What has arrived</span>
             <button onClick={() => shielded.refresh()} className="label-soft text-muted hover:text-bone">
-              {shielded.syncing ? "Scanning…" : "Scan for payments"}
+              {shielded.syncing ? (
+                <span className="flex items-center gap-1.5">
+                  <Spinner className="h-3 w-3" />
+                  Scanning
+                </span>
+              ) : (
+                "Scan for payments"
+              )}
             </button>
           </div>
           {shielded.balances.length === 0 ? (
@@ -542,6 +587,92 @@ function Row({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
     <div className="flex items-center justify-between text-xs gap-4">
       <span className="text-faint font-data shrink-0">{k}</span>
       <span className={`font-data text-right ${accent ? "text-acid" : "text-muted"}`}>{v}</span>
+    </div>
+  );
+}
+
+/**
+ * The live view of a merge run.
+ *
+ * Merging is not a payment, so it borrows nothing from the send modal: no
+ * recipient, no amount leaving. What it needs to show is that transactions are
+ * going out, how many are left, and that the wallet is about to ask.
+ */
+function MergeProgressModal({
+  symbol,
+  progress,
+  onClose,
+}: {
+  symbol: string;
+  progress: OpProgress | null;
+  onClose: () => void;
+}) {
+  const running = !!progress && !progress.done && !progress.error;
+  const total = progress?.parts.length ?? 0;
+  const landed = progress?.txs.length ?? 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4 bg-black/70"
+      onClick={running ? undefined : onClose}
+    >
+      <div className="w-full max-w-sm bg-card fade-up" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4">
+          <span className="label-mono text-[0.72rem] text-bone">Merging notes</span>
+          {!running && (
+            <button onClick={onClose} className="text-faint hover:text-bone text-lg leading-none">
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="px-5 pb-5 space-y-3">
+          <p className="text-xs text-muted leading-relaxed">
+            Each round combines your two smallest {symbol} notes into one, back to yourself. Nothing
+            leaves your balance.
+          </p>
+
+          <div className="bg-ink2 px-4 py-3 flex items-center justify-between text-xs">
+            <span className="text-faint font-data">Rounds</span>
+            <span className="font-data text-acid">
+              {landed} of {total || "…"}
+            </span>
+          </div>
+
+          {running && (
+            <p className="flex items-center gap-2 text-[0.7rem] text-muted leading-relaxed">
+              <Spinner className="h-3 w-3" />
+              {progress?.step === "confirm"
+                ? "Confirm in your wallet"
+                : progress?.step === "prove"
+                  ? "Proving in your browser"
+                  : progress?.step === "mined" || progress?.step === "record"
+                    ? "Recording the round"
+                    : "Reading the chain"}
+            </p>
+          )}
+          {running && (
+            <p className="text-[0.7rem] text-faint leading-relaxed">
+              Keep this tab open until the last round lands. Rounds already on chain stay done.
+            </p>
+          )}
+          {progress?.error && <p className="text-xs text-[#ff6b6b] leading-relaxed">{progress.error}</p>}
+          {progress?.done && (
+            <p className="text-xs text-muted leading-relaxed">
+              Done. Your notes are merged; the amount you wanted should fit now.
+            </p>
+          )}
+
+          {!running && (
+            <button
+              onClick={onClose}
+              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
+            >
+              Close
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

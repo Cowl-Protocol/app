@@ -292,7 +292,14 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           disabled={shielded.status === "unlocking" || !wallet.address}
           className="text-muted hover:text-bone font-data disabled:text-faint"
         >
-          {shielded.status === "unlocking" ? "check your wallet…" : "unlock to view"}
+          {shielded.status === "unlocking" ? (
+            <span className="flex items-center gap-1.5">
+              <Spinner className="h-3 w-3" />
+              check your wallet
+            </span>
+          ) : (
+            "unlock to view"
+          )}
         </button>
       )}
     </span>
@@ -581,7 +588,16 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               disabled={wallet.connecting}
               className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
             >
-              {wallet.connecting ? "Connecting…" : wallet.hasWallet ? "Connect wallet" : "Get a wallet"}
+              {wallet.connecting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Spinner className="h-3 w-3" />
+                    Connecting
+                  </span>
+                ) : wallet.hasWallet ? (
+                  "Connect wallet"
+                ) : (
+                  "Get a wallet"
+                )}
             </button>
           ) : wallet.wrongNetwork ? (
             <button
@@ -599,7 +615,14 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               disabled={shielded.status === "unlocking"}
               className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
             >
-              {shielded.status === "unlocking" ? "Check your wallet…" : "Unlock to see what you can withdraw"}
+              {shielded.status === "unlocking" ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Spinner className="h-3 w-3" />
+                  Check your wallet
+                </span>
+              ) : (
+                "Unlock to see what you can withdraw"
+              )}
             </button>
           ) : (
             <button

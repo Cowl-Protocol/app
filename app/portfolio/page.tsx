@@ -117,7 +117,14 @@ function PublicCard({
             disabled={wallet.connecting}
             className="label-mono text-xs px-6 py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
           >
-            {wallet.connecting ? "Connecting…" : "Connect wallet"}
+            {wallet.connecting ? (
+              <span className="flex items-center justify-center gap-2">
+                <Spinner className="h-3 w-3" />
+                Connecting
+              </span>
+            ) : (
+              "Connect wallet"
+            )}
           </button>
         </div>
       )}
@@ -268,7 +275,14 @@ function PrivateCard({ wallet, publicAssets }: { wallet: WalletState; publicAsse
                 disabled={shielded.status === "unlocking"}
                 className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
               >
-                {shielded.status === "unlocking" ? "Check your wallet…" : "Unlock private balance"}
+                {shielded.status === "unlocking" ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Spinner className="h-3 w-3" />
+                    Check your wallet
+                  </span>
+                ) : (
+                  "Unlock private balance"
+                )}
               </button>
             ) : (
               <button
@@ -276,7 +290,14 @@ function PrivateCard({ wallet, publicAssets }: { wallet: WalletState; publicAsse
                 disabled={wallet.connecting}
                 className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
               >
-                {wallet.connecting ? "Connecting…" : "Connect wallet"}
+                {wallet.connecting ? (
+              <span className="flex items-center justify-center gap-2">
+                <Spinner className="h-3 w-3" />
+                Connecting
+              </span>
+            ) : (
+              "Connect wallet"
+            )}
               </button>
             )}
             {unlockError && <p className="text-xs text-[#ff6b6b] mt-2 text-center">{unlockError}</p>}

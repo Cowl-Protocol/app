@@ -124,7 +124,10 @@ export default function SendConfirmModal({
                 </button>
               ) : (
                 <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">
-                  Sending…
+                  <span className="flex items-center justify-center gap-2">
+                    <Spinner className="h-3 w-3" />
+                    Sending
+                  </span>
                 </button>
               )}
             </div>

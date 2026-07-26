@@ -1,6 +1,7 @@
 "use client";
 
 import { shortAddr } from "@/lib/useWallet";
+import Spinner from "./Spinner";
 
 type Props = {
   address: string | null;
@@ -52,7 +53,18 @@ export default function ConnectButton({
       disabled={connecting}
       className="label-mono text-[0.72rem] px-5 py-2.5 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
     >
-      {connecting ? "Connecting…" : hasWallet ? "Connect wallet" : compact ? "Get wallet" : "Get a wallet"}
+      {connecting ? (
+        <span className="flex items-center justify-center gap-2">
+          <Spinner className="h-3 w-3" />
+          Connecting
+        </span>
+      ) : hasWallet ? (
+        "Connect wallet"
+      ) : compact ? (
+        "Get wallet"
+      ) : (
+        "Get a wallet"
+      )}
     </button>
   );
 }

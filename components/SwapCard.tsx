@@ -7,6 +7,7 @@ import { formatBalance } from "@/lib/prices";
 import type { useWallet } from "@/lib/useWallet";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import ConfirmModal from "./ConfirmModal";
+import Spinner from "./Spinner";
 
 type WalletState = ReturnType<typeof useWallet>;
 
@@ -187,7 +188,16 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               disabled={wallet.connecting}
               className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
             >
-              {wallet.connecting ? "Connecting…" : wallet.hasWallet ? "Connect wallet" : "Get a wallet"}
+              {wallet.connecting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Spinner className="h-3 w-3" />
+                    Connecting
+                  </span>
+                ) : wallet.hasWallet ? (
+                  "Connect wallet"
+                ) : (
+                  "Get a wallet"
+                )}
             </button>
           ) : wallet.wrongNetwork ? (
             <button

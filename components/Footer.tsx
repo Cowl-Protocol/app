@@ -6,6 +6,10 @@ export default function Footer() {
       <span className="flex items-center gap-2 label-mono text-[0.62rem]">
         <MaskLogo className="h-2.5 w-auto text-acid" />
         © Cowl Protocol
+        {/* Marked because this moves real money on mainnet while it is still
+            young. Someone deciding how much to put in deserves to know that
+            before they find out from a rough edge. */}
+        <span className="text-acid px-1.5 py-0.5 bg-[#161a10]">Beta</span>
       </span>
       <div className="flex items-center gap-5">
         <a href="https://cowlprotocol.com" className="label-mono text-[0.62rem] hover:text-bone transition-colors">

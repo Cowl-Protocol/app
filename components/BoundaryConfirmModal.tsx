@@ -32,6 +32,8 @@ type Props = {
   relayFee?: string;
   /** What actually leaves the shielded book: the amount plus that fee. */
   relayDrawn?: string;
+  /** Estimated native-coin gas when the wallet is the one paying. */
+  networkFee?: string;
   /** Live run state from the shielded context, when a run is under way. */
   progress: OpProgress | null;
   onExecute: () => void;
@@ -64,6 +66,7 @@ export default function BoundaryConfirmModal({
   gasless,
   relayFee,
   relayDrawn,
+  networkFee,
   progress,
   onExecute,
   onClose,
@@ -238,6 +241,12 @@ export default function BoundaryConfirmModal({
                 {gasless ? "The relayer" : mode === "shield" ? "You, per deposit" : "You, per withdrawal"}
               </span>
             </div>
+            {!gasless && networkFee && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-faint font-data">Network fee</span>
+                <span className="font-data text-muted">{networkFee}</span>
+              </div>
+            )}
             {gasless && (
               <>
                 {relayFee && (

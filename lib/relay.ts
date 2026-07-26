@@ -199,3 +199,46 @@ export function useRelayQuote(
 
   return { quote, checking };
 }
+
+/**
+ * What one spend costs in gas, before anyone decides who pays it.
+ *
+ * The same figure the relayer prices against, so the two sides of the choice
+ * are quoted from one number: pay it yourself in the native coin, or hand it to
+ * a relayer who charges it back in the token you are moving.
+ */
+export const GAS_PER_SPEND = 5_000_000n;
+
+/**
+ * The native-coin cost of a run you submit yourself.
+ *
+ * Shown whether or not a relayer is standing by, because "Gas payer: You" with
+ * no number beside it is not a price. An estimate is honest here — the gas
+ * price moves between now and the transaction — so it is labelled as one.
+ */
+export function useSelfGasEstimate(parts: number, enabled: boolean): bigint | null {
+  const [wei, setWei] = useState<bigint | null>(null);
+
+  useEffect(() => {
+    if (!enabled || parts <= 0) {
+      setWei(null);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const { publicClient } = await import("./useWallet");
+        const price = await publicClient.getGasPrice();
+        if (alive) setWei(price * GAS_PER_SPEND * BigInt(parts));
+      } catch {
+        // No estimate is better than a made-up one; the row simply stays away.
+        if (alive) setWei(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [parts, enabled]);
+
+  return wei;
+}

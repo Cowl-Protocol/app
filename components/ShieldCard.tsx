@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
+import { activeNetwork } from "@/lib/networks";
 import { decompose, groupParts, MAX_BOUNDARY_TXS, sharedCeiling, tiersFor } from "@/lib/denominations";
 import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
-import { useRelayQuote } from "@/lib/relay";
+import { useRelayQuote, useSelfGasEstimate } from "@/lib/relay";
 import { useTokenPrice } from "@/lib/tokenPrice";
 import { parseWindow } from "@/lib/spread";
 import { shortAddr, type useWallet } from "@/lib/useWallet";
@@ -30,6 +31,7 @@ function fmtUnits(v: bigint, decimals: number): string {
 }
 
 export default function ShieldCard({ wallet }: { wallet: WalletState }) {
+  const net = activeNetwork();
   const shielded = useShielded();
   const [mode, setMode] = useState<BoundaryMode>("shield");
   const [token, setToken] = useState<Token>(tokenBySymbol("ETH"));
@@ -94,6 +96,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   // opening a wallet.
   const { quote: relay } = useRelayQuote(tokenField, mode === "unshield");
   const gasless = mode === "unshield" && !!relay;
+  // The other half of the same question: what it costs when the wallet pays.
+  const selfGas = useSelfGasEstimate(execParts.length, !gasless && value > 0n);
 
   // The relayer's fee is paid out of the same notes, once per part, so it is
   // part of what the book has to cover. Leaving it out let an amount pass every
@@ -465,12 +469,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               v={gasless ? "The relayer" : mode === "shield" ? "You, per deposit" : "You, per withdrawal"}
               accent={gasless}
             />
-            {/* The arithmetic in full. A fee taken out of the same notes changes
-                what leaves the book, and a number that only appears after the
+            {/* The arithmetic in full, whoever pays. A cost with no number
+                beside it is not a price, and one that only appears after the
                 fact is a number nobody agreed to. */}
-            {gasless && relay && (
+            <Row k="You receive" v={`${fmtUnits(requiredTotal, token.decimals)} ${token.symbol}`} />
+            {gasless && relay ? (
               <>
-                <Row k="You receive" v={`${fmtUnits(requiredTotal, token.decimals)} ${token.symbol}`} />
                 <Row
                   k="Relayer fee"
                   v={`${fmtUnits(relayFeeTotal, token.decimals)} ${token.symbol}${
@@ -485,6 +489,17 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                   accent
                 />
               </>
+            ) : (
+              <Row
+                k="Network fee"
+                v={
+                  selfGas === null
+                    ? "estimating…"
+                    : `~${fmtUnits(selfGas, 18)} ${net.currency.symbol}${
+                        execParts.length > 1 ? ` · ${execParts.length} transactions` : ""
+                      }`
+                }
+              />
             )}
           </div>
         )}
@@ -584,6 +599,9 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         gasless={gasless}
         relayFee={gasless ? `${fmtUnits(relayFeeTotal, token.decimals)} ${token.symbol}` : undefined}
         relayDrawn={gasless ? `${fmtUnits(drawnFromNotes, token.decimals)} ${token.symbol}` : undefined}
+        networkFee={
+          !gasless && selfGas !== null ? `~${fmtUnits(selfGas, 18)} ${net.currency.symbol}` : undefined
+        }
         progress={shielded.progress}
         onExecute={execute}
         onClose={closeConfirm}

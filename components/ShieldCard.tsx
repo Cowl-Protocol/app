@@ -537,8 +537,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                 {feeIsSteep && (
                   <p className="text-[0.7rem] text-[#ffb84d] leading-relaxed pt-1">
                     That fee is {feeSharePct.toFixed(0)}% of what you are withdrawing. It costs one
-                    spend&apos;s gas whatever the size, so withdrawing more at once makes it a
-                    smaller share — or pay the gas yourself and skip it.
+                    spend&apos;s gas whatever the size, so a larger withdrawal pays the same fee and
+                    a smaller share of it.
                   </p>
                 )}
               </>

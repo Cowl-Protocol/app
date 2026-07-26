@@ -267,8 +267,8 @@ export default function BoundaryConfirmModal({
                 {steepFeePct !== undefined && (
                   <p className="text-[0.7rem] text-[#ffb84d] leading-relaxed">
                     That fee is {steepFeePct.toFixed(0)}% of what you are withdrawing. It costs one
-                    spend&apos;s gas whatever the size, so a larger withdrawal pays the same and a
-                    smaller share.
+                    spend&apos;s gas whatever the size, so a larger withdrawal pays the same fee and
+                    a smaller share of it.
                   </p>
                 )}
                 <p className="text-[0.7rem] text-faint leading-relaxed">

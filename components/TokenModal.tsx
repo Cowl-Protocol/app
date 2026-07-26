@@ -123,6 +123,14 @@ type Props = {
   exclude?: string;
   /** Curated list override — defaults to the swap list. */
   tokens?: Token[];
+  /**
+   * Show exactly these and nothing else, in this order.
+   *
+   * The shielded book is not the wallet: it holds what you shielded, and
+   * offering a token you have none of, or a search that reaches the whole
+   * chain, would only let someone pick something no note backs.
+   */
+  assets?: Asset[];
   /** Let a pasted ERC-20 address import a custom asset (RWA stocks and the rest). */
   allowImport?: boolean;
   /** Connected wallet — rows show its balance, largest holdings first. */
@@ -131,7 +139,7 @@ type Props = {
   onSelect: (t: Token) => void;
 };
 
-export default function TokenModal({ open, exclude, tokens, allowImport, owner, onClose, onSelect }: Props) {
+export default function TokenModal({ open, exclude, tokens, assets: fixedAssets, allowImport, owner, onClose, onSelect }: Props) {
   const [q, setQ] = useState("");
   const [imported, setImported] = useState<Token[]>([]);
   const [listed, setListed] = useState<Token[]>([]);
@@ -141,16 +149,20 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   // The wallet's own assets, balances and prices included, from the same source
   // the portfolio reads. A token discovered a moment ago arrives with its
   // balance attached rather than needing a second pass to fill it in.
-  const { assets, loading: assetsLoading } = useAssets(open ? (owner ?? null) : null);
+  const fixed = fixedAssets !== undefined;
+  const { assets: walletAssets, loading: assetsLoading } = useAssets(
+    open && !fixed ? (owner ?? null) : null,
+  );
+  const assets = fixed ? fixedAssets! : walletAssets;
 
   useEffect(() => {
-    if (open && allowImport) setImported(loadImported());
-  }, [open, allowImport]);
+    if (open && allowImport && !fixed) setImported(loadImported());
+  }, [open, allowImport, fixed]);
 
   // The live chain list, explorer-sourced, joins the curated set when importing
   // is on. Curated and imported entries win duplicates by address.
   useEffect(() => {
-    if (!open || !allowImport) return;
+    if (!open || !allowImport || fixed) return;
     let alive = true;
     setListLoading(true);
     fetchTokenList().then((l) => {
@@ -165,7 +177,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
 
   // Pinned = the wallet's assets, the curated boundary set, and anything
   // imported by hand. The live chain list follows underneath.
-  const base = tokens ?? TOKENS;
+  const base = fixed ? [] : (tokens ?? TOKENS);
   const byAddress = new Map<string, Asset>();
   for (const a of assets) byAddress.set(a.token.address.toLowerCase(), a);
   const asAsset = (t: Token): Asset =>
@@ -188,7 +200,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
   // A pasted address that isn't already listed gets read straight off the chain.
   useEffect(() => {
     const addr = q.trim();
-    if (!allowImport || !open || !isAddress(addr)) {
+    if (!allowImport || fixed || !open || !isAddress(addr)) {
       setLookup({ state: "idle" });
       return;
     }
@@ -260,7 +272,9 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
-          <span className="label-mono text-[0.72rem] text-bone">Select a token</span>
+          <span className="label-mono text-[0.72rem] text-bone">
+            {fixed ? "Send from your shielded book" : "Select a token"}
+          </span>
           <button onClick={onClose} className="text-faint hover:text-bone text-lg leading-none">
             ✕
           </button>
@@ -270,7 +284,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={allowImport ? "Search, or paste a token address" : "Search name or symbol"}
+            placeholder={allowImport && !fixed ? "Search, or paste a token address" : "Search name or symbol"}
             className="w-full bg-ink px-4 py-3 text-sm text-bone placeholder:text-faint font-data"
           />
         </div>
@@ -286,7 +300,7 @@ export default function TokenModal({ open, exclude, tokens, allowImport, owner, 
                   asset={a}
                   onPick={choose}
                   showAddress
-                  loading={!!owner && assetsLoading}
+                  loading={!fixed && !!owner && assetsLoading}
                 />
               ))}
             </>

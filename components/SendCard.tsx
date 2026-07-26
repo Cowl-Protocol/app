@@ -16,12 +16,13 @@ import Link from "next/link";
 import { formatUnits, parseUnits } from "viem";
 import { decodePaymentAddress, isPaymentAddress } from "@/lib/shielded/keys";
 import { formatUnitsExact } from "@/lib/prices";
+import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
 import { TOKENS, tokenMetaForField } from "@/lib/tokens";
 import type { useWallet } from "@/lib/useWallet";
 import { useShielded } from "./ShieldedProvider";
 import SendConfirmModal from "./SendConfirmModal";
-import { TokenGlyph } from "./TokenModal";
+import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
 import QrCode from "./QrCode";
@@ -48,12 +49,21 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   const [amount, setAmount] = useState("");
   const [to, setTo] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [copied, setCopied] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   // Bumped when the chain names a token the book was showing as a bare address.
   const [metaVersion, setMetaVersion] = useState(0);
 
   const unlocked = shielded.status === "ready";
+
+  // The public book, borrowed only to name and price what the shielded one
+  // holds, the same way the portfolio does it.
+  const { assets: publicAssets } = useAssets(wallet.address as `0x${string}` | null);
+  const { assets: shieldedAssets } = useShieldedAssets(
+    unlocked ? shielded.balances : [],
+    publicAssets,
+  );
 
   // Anyone can be paid in any ERC-20, so the book has to name tokens this app
   // has never been told about before it can offer them.
@@ -255,29 +265,19 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   disabled={!token}
                   onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
                 />
-                <span className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2">
+                {/* The same picker the boundary uses. A row of chips ran out of
+                    width the moment a book held more than a few assets, and it
+                    could not show a balance or a name beside the ticker. */}
+                <button
+                  onClick={() => tokens.length > 0 && setPicking(true)}
+                  disabled={tokens.length === 0}
+                  className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2 hover:bg-ink transition-colors disabled:hover:bg-ink3"
+                >
                   <TokenGlyph symbol={displayToken.symbol} src={displayToken.logoURI} />
                   <span className="label-mono text-[0.78rem] text-bone">{displayToken.symbol}</span>
-                </span>
+                  {tokens.length > 1 && <span className="text-faint text-[0.6rem] leading-none">▾</span>}
+                </button>
               </div>
-              {tokens.length > 1 && (
-                <div className="flex flex-wrap gap-1 mt-3">
-                  {tokens.map((t) => (
-                    <button
-                      key={t.field.toString()}
-                      onClick={() => {
-                        setSelected(t.field);
-                        setAmount("");
-                      }}
-                      className={`px-2.5 py-1 text-xs font-data transition-colors ${
-                        t.field === selected ? "bg-acid text-ink" : "bg-ink3 text-muted hover:text-bone"
-                      }`}
-                    >
-                      {t.symbol}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Recipient */}
@@ -350,6 +350,18 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
           ? "One address, reusable, and it never names your wallet."
           : "A note changes hands. The chain sees a spend, never the two ends of it."}
       </p>
+
+      {/* The picker offers the shielded book and nothing else: a token with no
+          note behind it is not something anyone can send. */}
+      <TokenModal
+        open={picking}
+        assets={shieldedAssets}
+        onClose={() => setPicking(false)}
+        onSelect={(t) => {
+          setSelected(t.native ? 0n : BigInt(t.address));
+          setAmount("");
+        }}
+      />
 
       {token && (
         <SendConfirmModal

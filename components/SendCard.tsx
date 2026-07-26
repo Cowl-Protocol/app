@@ -11,7 +11,7 @@
 // Each half is its own route (/send, /receive) and the tabs are links, so the
 // tab you are on always has an address you can hand to someone. Being paid is
 // the half people share.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { formatUnits, parseUnits } from "viem";
 import { decodePaymentAddress, isPaymentAddress } from "@/lib/shielded/keys";
@@ -52,6 +52,23 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   const [confirming, setConfirming] = useState(false);
   const [picking, setPicking] = useState(false);
   const [merging, setMerging] = useState(false);
+
+  /**
+   * The recipient field grows to fit what is in it.
+   *
+   * A zcowl address is 116 characters and wraps to three lines at this width;
+   * a fixed two-row box hid the front of it behind a scroll, so the part that
+   * identifies the account was the part you could not see. Height is reset to
+   * auto before measuring, or the box only ever grows and never shrinks back
+   * when the field is cleared.
+   */
+  const toRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const el = toRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [to, tab]);
   const [copied, setCopied] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   // Bumped when the chain names a token the book was showing as a bare address.
@@ -313,8 +330,9 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                 )}
               </div>
               <textarea
-                className="w-full bg-transparent text-bone placeholder:text-faint outline-none font-data text-sm resize-none leading-relaxed break-all disabled:text-faint"
-                rows={2}
+                ref={toRef}
+                className="w-full bg-transparent text-bone placeholder:text-faint outline-none font-data text-sm resize-none overflow-hidden leading-relaxed break-all disabled:text-faint"
+                rows={1}
                 spellCheck={false}
                 placeholder="zcowl1…"
                 value={to}

@@ -297,10 +297,38 @@ export type ChainLeaves = {
  * every deposit. The head is pinned before the log query so the cursor can
  * never step past events that land mid-read.
  */
+/**
+ * How far the log source may trail the one that answers head queries, and how
+ * long to give it.
+ *
+ * Logs and contract state come from different endpoints here: reads land on the
+ * fast node, history on the explorer's indexer, and the indexer runs a few
+ * blocks behind. Ask both in the same breath right after your own transaction
+ * lands and the contract will report a leaf the log has not indexed yet, which
+ * reads exactly like a truncated history when it is only a slow one.
+ */
+const INDEXER_CATCHUP_TRIES = 4;
+const INDEXER_CATCHUP_MS = 1_500;
+
 export async function fetchLeaves(
   net: NetworkDef,
   fromBlock: bigint,
   client: PoolClient = publicClient,
+): Promise<ChainLeaves> {
+  for (let attempt = 0; ; attempt++) {
+    const read = await fetchLeavesOnce(net, fromBlock, client);
+    // A short log is only worth waiting on when the whole history was asked
+    // for; an incremental read legitimately returns fewer than the total.
+    const complete = fromBlock > (net.contracts.poolDeployBlock ?? 0n) || read.leaves.length >= read.totalLeaves;
+    if (complete || attempt >= INDEXER_CATCHUP_TRIES) return read;
+    await new Promise((r) => setTimeout(r, INDEXER_CATCHUP_MS));
+  }
+}
+
+async function fetchLeavesOnce(
+  net: NetworkDef,
+  fromBlock: bigint,
+  client: PoolClient,
 ): Promise<ChainLeaves> {
   const pool = poolAddress(net);
   if (!pool) throw new Error(`No shielded pool deployed on ${net.label}.`);

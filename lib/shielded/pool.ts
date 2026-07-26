@@ -191,10 +191,18 @@ export function planConsolidate(
 ): PlannedSpend {
   const avail = wallet.notes
     .filter((n) => !n.spent && hexToField(n.token) === token && hexToField(n.value) > 0n)
-    .sort((a, b) => (hexToField(a.value) < hexToField(b.value) ? -1 : 1));
+    .sort((a, b) => (hexToField(a.value) < hexToField(b.value) ? 1 : -1));
   if (avail.length < 3) {
-    throw new Error("Nothing to merge — two notes or fewer already spend together.");
+    throw new Error("Nothing to merge, two notes or fewer already spend together.");
   }
+  // The two LARGEST, not the two smallest.
+  //
+  // What limits a spend is the sum of the top two notes, so that is the number
+  // a merge has to move. Combining the two smallest builds a pile from the
+  // bottom and can leave the top untouched for a whole round: on a book of
+  // seven 100k notes and one 50k, reaching 500k took five rounds and the fourth
+  // raised the ceiling by nothing at all. Taking the top two lifts it every
+  // time, and the same book gets there in three.
   const [a, b] = [avail[0]!, avail[1]!];
   const total = hexToField(a.value) + hexToField(b.value);
   const out0: Note = { value: total, token, mpk: keys.mpk, blinding: randomField() };
@@ -237,9 +245,11 @@ export function mergesNeeded(wallet: Wallet, token: bigint, target: bigint): num
 
   const top2 = (v: bigint[]) => v.slice(-2).reduce((s, x) => s + x, 0n);
   let rounds = 0;
+  // Counted the way planConsolidate merges, or the number on screen is a
+  // promise about a run that behaves differently.
   while (top2(values) < target && values.length >= 3) {
-    const merged = values[0]! + values[1]!;
-    values = [...values.slice(2), merged].sort((a, b) => (a < b ? -1 : 1));
+    const merged = values[values.length - 1]! + values[values.length - 2]!;
+    values = [...values.slice(0, values.length - 2), merged].sort((a, b) => (a < b ? -1 : 1));
     rounds++;
   }
   // Unreachable even after merging everything: the book simply holds less.

@@ -62,16 +62,21 @@ async function replayEverything(pool: Pool, deployBlock: bigint): Promise<boolea
   const commitments: string[] = [];
   for (const leaf of all.leaves) commitments[leaf.index] = leaf.commitment;
   if (commitments.length !== all.totalLeaves || commitments.some((c) => !c)) {
+    // Names the likely cause rather than the first suspect. Reads and logs come
+    // from different endpoints, and the one serving history indexes a few
+    // blocks behind, so a leaf that landed seconds ago can be real on chain and
+    // absent from the log. fetchLeaves already waits for that; reaching here
+    // means it stayed short.
     throw new Error(
-      `Pool has ${all.totalLeaves} leaves on chain but the full event replay yielded ${commitments.length}. ` +
-        `The RPC may be truncating history.`,
+      `The chain reports ${all.totalLeaves} notes but only ${commitments.length} are in the log yet. ` +
+        `Give the explorer a moment to catch up and try again.`,
     );
   }
   alignPoolToChain(pool, all.leaves, all.nullifiers);
   if (pool.root !== all.root) {
     throw new Error(
-      `Replayed ${all.totalLeaves} leaves but reached root ${pool.root}, and the pool reports ${all.root}. ` +
-        `The RPC may be serving an incomplete log.`,
+      `Replayed ${all.totalLeaves} notes and reached root ${pool.root}, but the chain reports ${all.root}. ` +
+        `The log this was rebuilt from is incomplete.`,
     );
   }
   pool.syncedBlock = all.latestBlock.toString();

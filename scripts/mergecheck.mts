@@ -40,11 +40,11 @@ function sendable(w: Wallet): bigint {
     .reduce((s, v) => s + v, 0n);
 }
 
-/** Apply one merge the way the executor does: two smallest become one. */
+/** Apply one merge the way the executor does: the two largest become one. */
 function mergeOnce(w: Wallet): Wallet {
   const live = w.notes
     .filter((n) => !n.spent)
-    .sort((a, b) => (BigInt(a.value) < BigInt(b.value) ? -1 : 1));
+    .sort((a, b) => (BigInt(a.value) < BigInt(b.value) ? 1 : -1));
   const [a, b] = [live[0]!, live[1]!];
   const rest = live.slice(2);
   const merged = BigInt(a.value) + BigInt(b.value);
@@ -98,6 +98,24 @@ check(
 const before = denominated.reduce((s, v) => s + v, 0n);
 const after = book.notes.filter((n) => !n.spent).reduce((s, n) => s + BigInt(n.value), 0n);
 check("merging conserves the balance to the wei", before === after, `${before / ONE} COWL both sides`);
+
+// The strategy is the point: merging the two smallest reached the same target
+// in five rounds, and one of those five raised the ceiling by nothing.
+const smallestFirst = (() => {
+  let v = denominated.map((x) => x).sort((a, b) => (a < b ? -1 : 1));
+  const top2 = (x: bigint[]) => [...x].sort((a, b) => (a < b ? 1 : -1)).slice(0, 2).reduce((s, y) => s + y, 0n);
+  let n = 0;
+  while (top2(v) < target && v.length >= 3) {
+    v = [...v.slice(2), v[0]! + v[1]!].sort((a, b) => (a < b ? -1 : 1));
+    n++;
+  }
+  return n;
+})();
+check(
+  "merging the largest beats merging the smallest",
+  rounds < smallestFirst,
+  `${rounds} rounds instead of ${smallestFirst}`,
+);
 
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

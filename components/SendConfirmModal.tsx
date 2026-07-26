@@ -25,7 +25,7 @@ type Props = {
 const STEPS = [
   { k: "Prove", d: "Your browser spends your notes inside the circuit and mints two fresh ones" },
   { k: "Submit", d: "The proof goes on chain and is checked there. Your old notes retire, fresh ones take their place" },
-  { k: "Arrive", d: "Only the recipient's view key opens their note. Change comes back to you" },
+  { k: "Arrive", d: "Their view key opens their note and nothing else does. Change comes back to you" },
 ];
 
 export default function SendConfirmModal({

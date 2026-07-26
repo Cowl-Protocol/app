@@ -45,8 +45,8 @@ type Props = {
 
 const STEPS: Record<BoundaryMode, { k: string; d: string }[]> = {
   shield: [
-    { k: "Denominate", d: "The amount travels in shared tiers where every 0.1 looks like every other 0.1" },
-    { k: "Prove", d: "Your browser proves each deposit's leaf insertion inside the circuit" },
+    { k: "Denominate", d: "Your amount goes out in shared sizes. Every 0.1 looks like every other 0.1" },
+    { k: "Prove", d: "Your browser proves each deposit inside the circuit, one at a time" },
     { k: "Settle", d: "Your funds land under your shielded keys. Only you can spend them" },
   ],
   unshield: [

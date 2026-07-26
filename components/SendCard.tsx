@@ -207,7 +207,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
           <span className="flex items-center gap-2">
             <InfoTip
               align="right"
-              text="A payment between shielded accounts never becomes public. The chain records that a spend happened, not the asset, the amount, or who was on either end."
+              text="A payment between shielded accounts never becomes public. The chain logs that a spend happened. Not the asset, not the amount, not either end."
             />
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
               Fully private
@@ -358,7 +358,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
         assetsLoading={shieldedLoading}
         emptyNote={
           unlocked
-            ? "Your shielded book is empty. Shield something and it shows up here."
+            ? "Nothing shielded yet. Shield something first and you can pay with it."
             : "Unlock your shielded account to see what you can send."
         }
         onClose={() => setPicking(false)}
@@ -403,7 +403,7 @@ function LockedPanel({
     <div className="bg-ink2 p-5 my-1">
       <p className="text-xs text-muted leading-relaxed">
         {tab === "send"
-          ? "One wallet signature derives your shielded keys, in this tab only. They sign the spend and nothing else sees them."
+          ? "One wallet signature derives your shielded keys. They live in this tab, sign the spend, and go nowhere else."
           : "Your payment address comes from your shielded keys. One wallet signature derives them, in this tab only."}
       </p>
       <div className="mt-4">

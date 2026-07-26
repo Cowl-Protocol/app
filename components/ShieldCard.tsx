@@ -345,7 +345,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           <span className="flex items-center gap-2">
             <InfoTip
               align="right"
-              text="The line where private meets public. Going in and coming out are visible on chain; everything you do while shielded is not."
+              text="The line where private meets public. Going in and coming out show on chain. What you do while shielded does not."
             />
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
               Boundary
@@ -450,7 +450,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           <div className="flex items-center justify-between gap-3">
             <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
               Spread
-              <InfoTip text="Fires the transactions at random moments across the window instead of one burst, so timing doesn't group them. Off submits them back to back." />
+              <InfoTip text="Fires the transactions at random moments across the window, not in one burst. Timing stops grouping them. Off sends them back to back." />
             </span>
             <div className="flex gap-1">
               {[null, ...SPREADS].map((s) => (
@@ -644,7 +644,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           assetsLoading={shieldedLoading}
           emptyNote={
             unlocked
-              ? "Your shielded book is empty. Shield something and it shows up here."
+              ? "Nothing shielded yet. Shield something and it lands here, ready to withdraw."
               : "Unlock your shielded account to see what you can withdraw."
           }
           onClose={() => setPicking(false)}

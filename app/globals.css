@@ -188,24 +188,34 @@ input.amount::-webkit-inner-spin-button {
  * macOS hides overlay scrollbars until the wheel moves, so a panel with more
  * below the fold looks like a panel that simply ends — the confirm modal was
  * cutting its own execute button off with nothing on screen to suggest there
- * was more. Forcing a width brings the bar back, and the acid thumb makes it
- * read as part of this interface rather than the browser's default furniture. */
+ * was more.
+ *
+ * `overflow-y: scroll` rather than `auto` is the part that matters: auto only
+ * reserves the track once the content overflows, and by then the reader has
+ * already decided the panel ended. The track is always there, so the thumb is
+ * always there to be seen. Colours are literal, not variables, because a
+ * scrollbar that silently falls back to the browser default is exactly the
+ * failure this is fixing. */
 .scroll-acid {
+  overflow-y: scroll;
   scrollbar-width: thin;
-  scrollbar-color: var(--color-acid) transparent;
+  scrollbar-color: #d7fb08 rgba(236, 236, 231, 0.06);
 }
 .scroll-acid::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
 }
 .scroll-acid::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(236, 236, 231, 0.06);
 }
 .scroll-acid::-webkit-scrollbar-thumb {
-  background: var(--color-acid);
-  /* Squared off, like every other edge here. */
+  background: #d7fb08;
+  /* Squared off, like every other edge here, and inset so the track reads as
+     a channel the thumb runs in rather than a border on the panel. */
   border-radius: 0;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 .scroll-acid::-webkit-scrollbar-thumb:hover {
-  background: var(--color-acid2);
+  background: #e6ff52;
+  background-clip: content-box;
 }

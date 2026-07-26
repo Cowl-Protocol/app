@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
-import { decompose, groupParts, MAX_BOUNDARY_TXS, tiersFor } from "@/lib/denominations";
+import { decompose, groupParts, MAX_BOUNDARY_TXS, sharedCeiling, tiersFor } from "@/lib/denominations";
 import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
 import { useTokenPrice } from "@/lib/tokenPrice";
 import { parseWindow } from "@/lib/spread";
@@ -101,7 +101,15 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   let label = "Enter an amount";
   if (amt > 0) label = mode === "shield" ? "Review shield" : "Review unshield";
   if (belowTier) label = `Below the ${fmtUnits(smallestTier, token.decimals)} tier · go Exact`;
-  if (tooMany) label = "Round the amount, or go Exact";
+  if (tooMany) {
+    // Above the ceiling nothing rounds into range, so name the ceiling instead
+    // of asking for a rounder number that does not exist.
+    const cap = sharedCeiling(token.decimals);
+    label =
+      value > cap
+        ? `Shared tops out at ${fmtUnits(cap, token.decimals)} ${token.symbol} · go Exact`
+        : "Round the amount, or go Exact";
+  }
   if (insufficient) label = `Insufficient ${mode === "shield" ? "" : "shielded "}${token.symbol}`;
   if (needsUnlockFirst) label = "Unlock to see what you can withdraw";
 

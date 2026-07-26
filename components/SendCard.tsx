@@ -33,10 +33,12 @@ const TABS: { key: Tab; label: string; href: string }[] = [
   { key: "receive", label: "Receive", href: "/receive" },
 ];
 
-// Private payments open in the app once the flow has carried real value
-// through the live pool. Until then the card shows the shape of a send and
-// stays inert — no keys derived, no signature asked for — with the boundary
-// and the CLI carrying the live flows.
+// Sending opens in the app once the flow has carried real value through the
+// live pool. Until then the send half shows its shape and stays inert — no
+// keys derived, no signature asked for — with the boundary and the CLI
+// carrying the live flows. Receiving is live now: handing out an address and
+// scanning for what arrived spend nothing, and the CLI pays that address
+// today, so the gate below covers the send half only.
 const LIVE = false;
 
 /** A token as the shielded book knows it: a pool field, named where possible. */
@@ -58,7 +60,8 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   // Bumped when the chain names a token the book was showing as a bare address.
   const [metaVersion, setMetaVersion] = useState(0);
 
-  const unlocked = LIVE && shielded.status === "ready";
+  const live = tab === "receive" || LIVE;
+  const unlocked = live && shielded.status === "ready";
 
   // Anyone can be paid in any ERC-20, so the book has to name tokens this app
   // has never been told about before it can offer them.
@@ -195,12 +198,12 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
               text="Payments between shielded accounts never leave the pool. The chain records that a spend happened, not the asset, the amount or who was on either end."
             />
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
-              {LIVE ? "Inside the pool" : "Coming soon"}
+              {live ? "Inside the pool" : "Coming soon"}
             </span>
           </span>
         </div>
 
-        {LIVE && !unlocked ? (
+        {live && !unlocked ? (
           <LockedPanel
             wallet={wallet}
             status={shielded.status}
@@ -349,25 +352,20 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
 
       {/* Footer note */}
       <p className="text-center text-xs text-faint mt-4">
-        {LIVE ? (
-          tab === "send" ? (
-            "A note changes hands. The chain sees a spend, never the two ends of it."
-          ) : (
-            "One address, reusable, and it never names your wallet."
-          )
+        {tab === "receive" ? (
+          "One address, reusable, and it never names your wallet."
+        ) : LIVE ? (
+          "A note changes hands. The chain sees a spend, never the two ends of it."
         ) : (
           <>
             <Link href="/shield" className="text-muted hover:text-bone transition-colors">
               Shield and unshield
             </Link>{" "}
             are live today, and{" "}
-            <a
-              href="https://cowlprotocol.com/docs"
-              className="text-muted hover:text-bone transition-colors"
-            >
-              the cowl CLI
-            </a>{" "}
-            pays a zcowl address right now.
+            <Link href="/receive" className="text-muted hover:text-bone transition-colors">
+              your payment address
+            </Link>{" "}
+            is ready to hand out.
           </>
         )}
       </p>
@@ -436,7 +434,7 @@ function LockedPanel({
 
 function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: string) => void }) {
   const shielded = useShielded();
-  const address = LIVE ? shielded.paymentAddress : null;
+  const address = shielded.paymentAddress;
 
   return (
     <>
@@ -491,13 +489,7 @@ function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: stri
             </div>
           )}
         </div>
-      ) : (
-        <div className="mt-4">
-          <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">
-            Private receive coming soon
-          </button>
-        </div>
-      )}
+      ) : null}
     </>
   );
 }

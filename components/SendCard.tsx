@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatUnits, parseUnits } from "viem";
-import { isPaymentAddress } from "@/lib/shielded/keys";
+import { decodePaymentAddress, isPaymentAddress } from "@/lib/shielded/keys";
 import { formatUnitsExact } from "@/lib/prices";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
 import { TOKENS, tokenMetaForField } from "@/lib/tokens";
@@ -32,14 +32,6 @@ const TABS: { key: Tab; label: string; href: string }[] = [
   { key: "send", label: "Send", href: "/send" },
   { key: "receive", label: "Receive", href: "/receive" },
 ];
-
-// Sending opens in the app once the flow has carried real value through the
-// live pool. Until then the send half shows its shape and stays inert — no
-// keys derived, no signature asked for — with the boundary and the CLI
-// carrying the live flows. Receiving is live now: handing out an address and
-// scanning for what arrived spend nothing, and the CLI pays that address
-// today, so the gate below covers the send half only.
-const LIVE = false;
 
 /** A token as the shielded book knows it: a pool field, named where possible. */
 type ShieldedToken = { field: bigint; symbol: string; decimals: number; logoURI?: string };
@@ -60,8 +52,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   // Bumped when the chain names a token the book was showing as a bare address.
   const [metaVersion, setMetaVersion] = useState(0);
 
-  const live = tab === "receive" || LIVE;
-  const unlocked = live && shielded.status === "ready";
+  const unlocked = shielded.status === "ready";
 
   // Anyone can be paid in any ERC-20, so the book has to name tokens this app
   // has never been told about before it can offer them.
@@ -114,13 +105,22 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
 
   const trimmedTo = to.trim();
   const validTo = isPaymentAddress(trimmedTo);
-  const toSelf = validTo && !!shielded.paymentAddress && trimmedTo === shielded.paymentAddress;
+  // A self-payment by keys, not by string: the legacy hex form of your own
+  // address is still you.
+  const toSelf = useMemo(() => {
+    if (!validTo || !shielded.paymentAddress) return false;
+    try {
+      return decodePaymentAddress(trimmedTo).mpk === decodePaymentAddress(shielded.paymentAddress).mpk;
+    } catch {
+      return false;
+    }
+  }, [validTo, trimmedTo, shielded.paymentAddress]);
   const overBalance = value > balance;
   // A join-split reads two notes at most, so a book can hold more than one
   // transfer can carry. Say which number applies rather than failing at proving.
   const overSendable = !overBalance && value > sendable;
 
-  const ready = LIVE && unlocked && !!token && value > 0n && validTo && !overBalance && !overSendable;
+  const ready = unlocked && !!token && value > 0n && validTo && !overBalance && !overSendable;
 
   let label = "Enter an amount";
   if (unlocked && tokens.length === 0) label = "Shield something first";
@@ -198,12 +198,12 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
               text="Payments between shielded accounts never leave the pool. The chain records that a spend happened, not the asset, the amount or who was on either end."
             />
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
-              {live ? "Inside the pool" : "Coming soon"}
+              Inside the pool
             </span>
           </span>
         </div>
 
-        {live && !unlocked ? (
+        {!unlocked ? (
           <LockedPanel
             wallet={wallet}
             status={shielded.status}
@@ -221,9 +221,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   Shielded balance
                 </span>
                 <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
-                  {!LIVE ? (
-                    <span>—</span>
-                  ) : token ? (
+                  {token ? (
                     <>
                       <span>
                         {formatUnitsExact(balance, decimals)} {token.symbol}
@@ -242,7 +240,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   ) : (
                     <span>nothing shielded yet</span>
                   )}
-                  {LIVE && shielded.syncing && (
+                  {shielded.syncing && (
                     <span className="inline-block h-2 w-2 border-2 border-acid border-t-transparent rounded-full spin" />
                   )}
                 </span>
@@ -253,7 +251,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   inputMode="decimal"
                   placeholder="0"
                   value={amount}
-                  disabled={!LIVE || !token}
+                  disabled={!token}
                   onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
                 />
                 <span className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2">
@@ -261,7 +259,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   <span className="label-mono text-[0.78rem] text-bone">{displayToken.symbol}</span>
                 </span>
               </div>
-              {LIVE && tokens.length > 1 && (
+              {tokens.length > 1 && (
                 <div className="flex flex-wrap gap-1 mt-3">
                   {tokens.map((t) => (
                     <button
@@ -285,7 +283,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
             <div className="bg-ink2 p-4 my-1">
               <div className="flex items-center justify-between mb-2 gap-3">
                 <span className="label-soft text-faint whitespace-nowrap">To</span>
-                {LIVE && validTo && (
+                {validTo && (
                   <span className="label-soft text-acid whitespace-nowrap">
                     {toSelf ? "Your own address" : "Valid address"}
                   </span>
@@ -297,13 +295,12 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                 spellCheck={false}
                 placeholder="zcowl1…"
                 value={to}
-                disabled={!LIVE}
                 onChange={(e) => setTo(e.target.value)}
               />
             </div>
 
             {/* What this costs, and what it shows */}
-            {(!LIVE || value > 0n) && (
+            {value > 0n && (
               <div className="mt-3 px-1 space-y-2 fade-up">
                 <Row k="On chain" v="two nullifiers, two commitments" />
                 <Row k="Amount" v="stays inside the pool" accent />
@@ -315,11 +312,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
 
             {/* Action */}
             <div className="mt-4">
-              {!LIVE ? (
-                <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">
-                  Private send coming soon
-                </button>
-              ) : !wallet.address ? (
+              {!wallet.address ? (
                 <button
                   onClick={wallet.connect}
                   disabled={wallet.connecting}
@@ -352,25 +345,12 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
 
       {/* Footer note */}
       <p className="text-center text-xs text-faint mt-4">
-        {tab === "receive" ? (
-          "One address, reusable, and it never names your wallet."
-        ) : LIVE ? (
-          "A note changes hands. The chain sees a spend, never the two ends of it."
-        ) : (
-          <>
-            <Link href="/shield" className="text-muted hover:text-bone transition-colors">
-              Shield and unshield
-            </Link>{" "}
-            are live today, and{" "}
-            <Link href="/receive" className="text-muted hover:text-bone transition-colors">
-              your payment address
-            </Link>{" "}
-            is ready to hand out.
-          </>
-        )}
+        {tab === "receive"
+          ? "One address, reusable, and it never names your wallet."
+          : "A note changes hands. The chain sees a spend, never the two ends of it."}
       </p>
 
-      {LIVE && token && (
+      {token && (
         <SendConfirmModal
           open={confirming}
           symbol={token.symbol}
@@ -458,7 +438,7 @@ function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: stri
       <div className="mt-3 px-1 space-y-2">
         <Row k="Reusable" v="the same address, every payment" />
         <Row k="Your wallet" v="never appears in it" accent />
-        <Row k="Senders" v="the cowl CLI pays it today" />
+        <Row k="Senders" v="this app and the cowl CLI both pay it" />
       </div>
 
       {address ? (

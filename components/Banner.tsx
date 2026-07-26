@@ -13,7 +13,7 @@ export default function Banner() {
         <MaskLogo className="h-2.5 w-auto text-acid shrink-0" />
         <p className="label-mono text-[0.62rem] leading-relaxed">
           <span className="text-acid">Live</span>
-          <span className="text-muted"> · Shield and unshield run in your browser now. Your keys never leave the tab. </span>
+          <span className="text-muted"> · Shield, unshield and private payments run in your browser now. Your keys never leave the tab. </span>
           <a
             href="/shield"
             className="text-bone hover:text-acid transition-colors"

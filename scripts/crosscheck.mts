@@ -23,7 +23,12 @@ import { proveShield } from "../lib/shielded/prove";
 import { poseidon as cliPoseidon } from "../../cli/src/shielded/field.js";
 import { commitment as cliCommitment, nullifier as cliNullifier } from "../../cli/src/shielded/note.js";
 import { encryptNote as cliEncrypt, tryDecryptNote as cliDecrypt, packCipher as cliPack } from "../../cli/src/shielded/crypto.js";
-import { deriveShieldedKeys as cliDeriveKeys, decodePaymentAddress as cliDecodeAddress } from "../../cli/src/shielded/keys.js";
+import {
+  deriveShieldedKeys as cliDeriveKeys,
+  deriveShieldedKeysFromSignature as cliDeriveFromSig,
+  decodePaymentAddress as cliDecodeAddress,
+  SHIELDED_SIGN_MESSAGE as CLI_SIGN_MESSAGE,
+} from "../../cli/src/shielded/keys.js";
 
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -94,6 +99,20 @@ function check(name: string, ok: boolean, detail = "") {
   // The signature space must not collide with the CLI's private-key space.
   const cliKeys = cliDeriveKeys("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
   check("sig-v1 account distinct from CLI account", k1.mpk !== cliKeys.mpk);
+
+  // ---- one wallet, one book, in the terminal and in the browser ------------
+  // The CLI can reach the app's account because it holds the private key and
+  // can produce the same signature. If any of this drifts, `cowl` looks for
+  // notes at an mpk the app never wrote to and simply reports an empty balance,
+  // so these are the checks that keep the two books the same book.
+  check("CLI and app agree on the unlock message", CLI_SIGN_MESSAGE === SHIELDED_SIGN_MESSAGE);
+  const cliSig = cliDeriveFromSig(sig1);
+  check(
+    "CLI sig-v1 derives the app's exact account",
+    cliSig.mpk === k1.mpk && cliSig.viewPubHex === k1.viewPubHex && cliSig.sk === k1.sk,
+  );
+  check("both sides publish the same payment address", cliSig.paymentAddress === k1.paymentAddress);
+  check("accounts carry which space they came from", cliSig.space === "sig-v1" && cliKeys.space === "key");
 
   // Round trip through the scan path: encrypt a note to the sig-derived keys,
   // plant it in a pool, and let applyScan discover it.

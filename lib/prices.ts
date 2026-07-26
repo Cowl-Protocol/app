@@ -90,3 +90,21 @@ export function formatBalance(exact: string): string {
 export function formatUnitsExact(value: bigint, decimals: number): string {
   return formatBalance(formatUnits(value, decimals));
 }
+
+/**
+ * A balance sized for a line that also has to hold a label and a button.
+ *
+ * The exact figure is the truth and stays available on hover, but eighteen
+ * decimals crammed beside "SHIELDED BALANCE 0x3D17…54D9" pushed the row past
+ * its own card. This keeps every whole unit and enough fraction to see what
+ * kind of number it is, then marks plainly that there is more.
+ *
+ * Never used where the number is the subject: the amount fields and the fee
+ * rows still print in full, because there the digits are the point.
+ */
+export function formatBalanceShort(value: bigint, decimals: number, maxFraction = 4): string {
+  const exact = formatUnitsExact(value, decimals);
+  const [whole = "0", fraction = ""] = exact.split(".");
+  if (fraction.length <= maxFraction) return exact;
+  return `${whole}.${fraction.slice(0, maxFraction)}…`;
+}

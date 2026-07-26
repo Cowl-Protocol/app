@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { formatUnits, parseUnits } from "viem";
 import { decodePaymentAddress, isPaymentAddress } from "@/lib/shielded/keys";
-import { formatUnitsExact } from "@/lib/prices";
+import { formatBalanceShort, formatUnitsExact } from "@/lib/prices";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
 import { TOKENS, tokenMetaForField } from "@/lib/tokens";
@@ -270,8 +270,8 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                 <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
                   {token ? (
                     <>
-                      <span>
-                        {formatUnitsExact(balance, decimals)} {token.symbol}
+                      <span title={`${formatUnitsExact(balance, decimals)} ${token.symbol}`}>
+                        {formatBalanceShort(balance, decimals)} {token.symbol}
                       </span>
                       {balance > 0n && (
                         <button

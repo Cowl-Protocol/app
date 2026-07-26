@@ -5,7 +5,7 @@ import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { activeNetwork } from "@/lib/networks";
 import { decompose, groupParts, maxAfterFee, MAX_BOUNDARY_TXS, sharedCeiling, tiersFor } from "@/lib/denominations";
-import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
+import { formatBalance, formatBalanceShort, formatUnitsExact, usdOf } from "@/lib/prices";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { useRelayQuote, useSelfGasEstimate } from "@/lib/relay";
 import { useTokenPrice } from "@/lib/tokenPrice";
@@ -259,8 +259,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
       {unlocked ? (
         <>
-          <span>
-            {formatUnitsExact(shieldedBal, token.decimals)} {token.symbol}
+          <span title={`${formatUnitsExact(shieldedBal, token.decimals)} ${token.symbol}`}>
+            {formatBalanceShort(shieldedBal, token.decimals)} {token.symbol}
           </span>
           {mode === "unshield" && shieldedBal > 0n && (
             <button
@@ -362,7 +362,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 
         {/* Source panel */}
         <div className="bg-ink2 p-4 my-1">
-          <div className="flex items-center justify-between mb-2 gap-3">
+          <div className="flex flex-wrap items-center justify-between mb-2 gap-x-3 gap-y-1">
             <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
               {mode === "unshield" && <MaskLogo className="h-2 w-auto text-acid" />}
               {mode === "shield" ? "Public wallet" : "Shielded balance"}
@@ -410,7 +410,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 
         {/* Destination panel */}
         <div className="bg-ink2 p-4 my-1">
-          <div className="flex items-center justify-between mb-2 gap-3">
+          <div className="flex flex-wrap items-center justify-between mb-2 gap-x-3 gap-y-1">
             <span className="flex items-center gap-1.5 label-soft text-faint whitespace-nowrap">
               {mode === "shield" && <MaskLogo className="h-2 w-auto text-acid" />}
               {mode === "shield" ? "Shielded balance" : "Public wallet"}

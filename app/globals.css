@@ -182,3 +182,30 @@ input.amount::-webkit-inner-spin-button {
   background-image: radial-gradient(rgba(236, 236, 231, 0.04) 1px, transparent 1px);
   background-size: 3px 3px;
 }
+
+/* Scrollbars that admit they exist.
+ *
+ * macOS hides overlay scrollbars until the wheel moves, so a panel with more
+ * below the fold looks like a panel that simply ends — the confirm modal was
+ * cutting its own execute button off with nothing on screen to suggest there
+ * was more. Forcing a width brings the bar back, and the acid thumb makes it
+ * read as part of this interface rather than the browser's default furniture. */
+.scroll-acid {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-acid) transparent;
+}
+.scroll-acid::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-acid::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-acid::-webkit-scrollbar-thumb {
+  background: var(--color-acid);
+  /* Squared off, like every other edge here. */
+  border-radius: 0;
+}
+.scroll-acid::-webkit-scrollbar-thumb:hover {
+  background: var(--color-acid2);
+}

@@ -306,7 +306,7 @@ export default function TokenModal({
             className="w-full bg-ink px-4 py-3 text-sm text-bone placeholder:text-faint font-data"
           />
         </div>
-        <div className="max-h-[52vh] overflow-y-auto pb-2">
+        <div className="max-h-[52vh] overflow-y-auto scroll-acid pb-2">
           {pinnedRows.length > 0 && (
             <>
               {allowImport && (

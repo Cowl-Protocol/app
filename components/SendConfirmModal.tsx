@@ -47,7 +47,7 @@ export default function SendConfirmModal({
       className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] px-4 bg-black/70"
       onClick={running ? undefined : onClose}
     >
-      <div className="w-full max-w-md bg-card fade-up max-h-[84vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md bg-card fade-up max-h-[84vh] overflow-y-auto scroll-acid" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <span className="label-mono text-[0.72rem] text-bone">Review send</span>
           {!running && (

@@ -139,6 +139,15 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   };
 
   const execute = () => {
+    // Trying again after a failure finishes the run; it does not start it over.
+    // The parts already on chain are carried across so they are skipped, since
+    // repeating one would move the same money a second time.
+    const prev = shielded.progress;
+    const samePlan =
+      !!prev?.error &&
+      prev.parts.length === execParts.length &&
+      prev.parts.every((p, i) => p === execParts[i]);
+    const alreadyLanded = samePlan ? prev.txs : [];
     shielded.clearProgress();
     const args = {
       parts: execParts,
@@ -146,6 +155,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
       symbol: token.symbol,
       decimals: token.decimals,
       spreadMs: parseWindow(spread),
+      done: alreadyLanded,
     };
     const run =
       mode === "shield"

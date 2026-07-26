@@ -162,7 +162,11 @@ export default function BoundaryConfirmModal({
                   onClick={onExecute}
                   className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
                 >
-                  Try again
+                  {/* Naming what it will do, because the parts above already
+                      moved money and "try again" reads like it undoes them. */}
+                  {progress.txs.length > 0
+                    ? `Finish the remaining ${progress.parts.length - progress.txs.length}`
+                    : "Try again"}
                 </button>
               ) : (
                 <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">

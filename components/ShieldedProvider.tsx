@@ -59,6 +59,9 @@ export type ShieldedStatus = "locked" | "unlocking" | "ready";
 
 export type OpStep = "unlock" | "wait" | "sync" | "prove" | "confirm" | "mined" | "record";
 
+/** A part of a run that reached the chain, and the transaction that carried it. */
+export type PartTx = { hash: string; part: number };
+
 export type OpProgress = {
   op: "shield" | "unshield" | "send";
   symbol: string;
@@ -66,7 +69,7 @@ export type OpProgress = {
   parts: bigint[];
   current: number;
   step: OpStep;
-  txs: { hash: string; part: number }[];
+  txs: PartTx[];
   done: boolean;
   error?: string;
   /** When the current spread wait ends, so the modal can count down to it. */
@@ -95,6 +98,12 @@ type ShieldedContextValue = {
     decimals: number;
     /** Scatter the parts across this many milliseconds. */
     spreadMs?: number | null;
+    /**
+     * Parts of this same run that already landed on chain, so a retry finishes
+     * the run instead of starting it over. Their money has moved; sending them
+     * again would move it twice.
+     */
+    done?: PartTx[];
   }) => Promise<void>;
   unshieldExec: (args: {
     parts: bigint[];
@@ -102,6 +111,7 @@ type ShieldedContextValue = {
     symbol: string;
     decimals: number;
     spreadMs?: number | null;
+    done?: PartTx[];
   }) => Promise<void>;
   sendExec: (args: {
     /** zcowl payment address of the recipient. */
@@ -316,11 +326,25 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   // ---- executors ------------------------------------------------------------
 
   const shieldExec = useCallback<ShieldedContextValue["shieldExec"]>(
-    async ({ parts, tokenField, tokenAddress, symbol, decimals, spreadMs }) => {
+    async ({ parts, tokenField, tokenAddress, symbol, decimals, spreadMs, done = [] }) => {
       const wc = walletClientRef.current;
       if (!wc) throw new Error("Connect a wallet first.");
 
-      const prog: OpProgress = { op: "shield", symbol, decimals, parts, current: 0, step: "unlock", txs: [], done: false };
+      // A retry carries the parts that already landed. Their deposits are on
+      // chain and their money has left the wallet, so they are skipped and kept
+      // on screen with the transaction that carried them.
+      const landed = new Set(done.map((t) => t.part));
+      const firstOpen = parts.findIndex((_, i) => !landed.has(i));
+      const prog: OpProgress = {
+        op: "shield",
+        symbol,
+        decimals,
+        parts,
+        current: firstOpen < 0 ? 0 : firstOpen,
+        step: "unlock",
+        txs: [...done],
+        done: false,
+      };
       const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
       publish();
 
@@ -328,15 +352,18 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
       try {
         const k = await ensureKeys();
-        // One exact approval covers the whole batch on the ERC-20 path.
+        // One approval covers what is left to deposit. The allowance from the
+        // first attempt usually still covers it, and approvePool asks for
+        // nothing when it does.
         if (tokenField !== 0n && tokenAddress) {
           prog.step = "confirm";
           publish();
-          const total = parts.reduce((s, p) => s + p, 0n);
-          await approvePool(wc, tokenAddress, total);
+          const total = parts.reduce((s, p, i) => (landed.has(i) ? s : s + p), 0n);
+          if (total > 0n) await approvePool(wc, tokenAddress, total);
         }
 
         for (let i = 0; i < parts.length; i++) {
+          if (landed.has(i)) continue;
           prog.current = i;
           await holdFor(delays[i] ?? 0, prog, publish);
           for (let attempt = 0; ; attempt++) {
@@ -415,12 +442,26 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   );
 
   const unshieldExec = useCallback<ShieldedContextValue["unshieldExec"]>(
-    async ({ parts, tokenField, symbol, decimals, spreadMs }) => {
+    async ({ parts, tokenField, symbol, decimals, spreadMs, done = [] }) => {
       const wc = walletClientRef.current;
       if (!wc?.account) throw new Error("Connect a wallet first.");
       const payout = BigInt(wc.account.address);
 
-      const prog: OpProgress = { op: "unshield", symbol, decimals, parts, current: 0, step: "unlock", txs: [], done: false };
+      // Same as a shield retry, and it matters more here: these parts already
+      // spent notes, so repeating one would try to spend a nullifier the pool
+      // has seen and take a second bite out of the shielded balance.
+      const landed = new Set(done.map((t) => t.part));
+      const firstOpen = parts.findIndex((_, i) => !landed.has(i));
+      const prog: OpProgress = {
+        op: "unshield",
+        symbol,
+        decimals,
+        parts,
+        current: firstOpen < 0 ? 0 : firstOpen,
+        step: "unlock",
+        txs: [...done],
+        done: false,
+      };
       const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
       publish();
 
@@ -429,6 +470,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       try {
         const k = await ensureKeys();
         for (let i = 0; i < parts.length; i++) {
+          if (landed.has(i)) continue;
           prog.current = i;
           await holdFor(delays[i] ?? 0, prog, publish);
           for (let attempt = 0; ; attempt++) {

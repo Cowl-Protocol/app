@@ -219,6 +219,11 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             <span className="inline-block h-2 w-2 border-2 border-acid border-t-transparent rounded-full spin" />
           )}
         </>
+      ) : mode === "unshield" ? (
+        // Unshield's main button already offers the unlock. Two ways to do the
+        // same thing, one of them a dead disabled label, is how the screen came
+        // to look like it was refusing the very step it was asking for.
+        <span className="text-faint">hidden until unlocked</span>
       ) : (
         <button
           onClick={unlock}
@@ -453,6 +458,17 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               className="w-full label-mono text-sm py-4 bg-[#3a1414] text-[#ff6b6b] hover:bg-[#4a1818] transition-colors"
             >
               Switch to {wallet.network.label}
+            </button>
+          ) : needsUnlockFirst ? (
+            // The step that is actually in the way, as something you can press.
+            // This used to be the disabled label, which told someone to unlock
+            // while refusing the click that would.
+            <button
+              onClick={unlock}
+              disabled={shielded.status === "unlocking"}
+              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
+            >
+              {shielded.status === "unlocking" ? "Check your wallet…" : "Unlock to see what you can withdraw"}
             </button>
           ) : (
             <button

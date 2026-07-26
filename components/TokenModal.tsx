@@ -131,6 +131,8 @@ type Props = {
    * chain, would only let someone pick something no note backs.
    */
   assets?: Asset[];
+  /** What to say when `assets` is empty, since only the caller knows why. */
+  emptyNote?: string;
   /** Let a pasted ERC-20 address import a custom asset (RWA stocks and the rest). */
   allowImport?: boolean;
   /** Connected wallet — rows show its balance, largest holdings first. */
@@ -139,7 +141,17 @@ type Props = {
   onSelect: (t: Token) => void;
 };
 
-export default function TokenModal({ open, exclude, tokens, assets: fixedAssets, allowImport, owner, onClose, onSelect }: Props) {
+export default function TokenModal({
+  open,
+  exclude,
+  tokens,
+  assets: fixedAssets,
+  emptyNote,
+  allowImport,
+  owner,
+  onClose,
+  onSelect,
+}: Props) {
   const [q, setQ] = useState("");
   const [imported, setImported] = useState<Token[]>([]);
   const [listed, setListed] = useState<Token[]>([]);
@@ -334,8 +346,8 @@ export default function TokenModal({ open, exclude, tokens, assets: fixedAssets,
           {fixed && list.length === 0 && (
             <p className="px-5 py-4 text-xs text-muted leading-relaxed">
               {needle
-                ? "Nothing in your shielded book matches that."
-                : "Your shielded book is empty. Shield something and it shows up here."}
+                ? "Nothing here matches that."
+                : (emptyNote ?? "Nothing to choose from yet.")}
             </p>
           )}
 

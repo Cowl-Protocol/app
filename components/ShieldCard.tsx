@@ -510,6 +510,11 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         <TokenModal
           open={picking}
           assets={shieldedAssets}
+          emptyNote={
+            unlocked
+              ? "Your shielded book is empty. Shield something and it shows up here."
+              : "Unlock your shielded account to see what you can withdraw."
+          }
           onClose={() => setPicking(false)}
           onSelect={pick}
         />

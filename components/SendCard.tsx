@@ -356,6 +356,11 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
       <TokenModal
         open={picking}
         assets={shieldedAssets}
+        emptyNote={
+          unlocked
+            ? "Your shielded book is empty. Shield something and it shows up here."
+            : "Unlock your shielded account to see what you can send."
+        }
         onClose={() => setPicking(false)}
         onSelect={(t) => {
           setSelected(t.native ? 0n : BigInt(t.address));

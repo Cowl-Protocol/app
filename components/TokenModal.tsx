@@ -329,6 +329,16 @@ export default function TokenModal({ open, exclude, tokens, assets: fixedAssets,
             <p className="px-5 py-3 text-xs text-faint">Loading the token list…</p>
           )}
 
+          {/* A fixed list can legitimately be empty, and silence there reads as
+              a broken picker rather than an empty book. */}
+          {fixed && list.length === 0 && (
+            <p className="px-5 py-4 text-xs text-muted leading-relaxed">
+              {needle
+                ? "Nothing in your shielded book matches that."
+                : "Your shielded book is empty. Shield something and it shows up here."}
+            </p>
+          )}
+
           {lookup.state === "loading" && (
             <p className="px-5 py-4 text-xs text-faint">Reading token…</p>
           )}

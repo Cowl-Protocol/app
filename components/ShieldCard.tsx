@@ -5,6 +5,7 @@ import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { decompose, groupParts, MAX_BOUNDARY_TXS, sharedCeiling, tiersFor } from "@/lib/denominations";
 import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
+import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { useTokenPrice } from "@/lib/tokenPrice";
 import { parseWindow } from "@/lib/spread";
 import { shortAddr, type useWallet } from "@/lib/useWallet";
@@ -79,6 +80,14 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const shieldedBal = shielded.balanceOf(tokenField);
   const unlocked = shielded.status === "ready";
 
+  // What the shielded book actually holds, named and priced like any other
+  // asset. This is the only thing an unshield can draw from.
+  const { assets: publicAssets } = useAssets(wallet.address as `0x${string}` | null);
+  const { assets: shieldedAssets } = useShieldedAssets(
+    unlocked ? shielded.balances : [],
+    publicAssets,
+  );
+
   const amt = parseFloat(amount) || 0;
   const balUnknown = publicBal === null;
   const bal = parseFloat(publicBal ?? "0") || 0;
@@ -119,7 +128,25 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   };
 
   const flip = () => {
-    setMode((m) => (m === "shield" ? "unshield" : "shield"));
+    setMode((m) => {
+      const next = m === "shield" ? "unshield" : "shield";
+      // Landing on a token the book holds nothing of reads as an empty balance
+      // rather than the wrong pick, so unshield opens on what is actually there.
+      if (next === "unshield" && shieldedAssets.length > 0) {
+        const held = shieldedAssets.find(
+          (a) => a.token.address.toLowerCase() === token.address.toLowerCase(),
+        );
+        if (!held || (held.balance ?? 0n) === 0n) {
+          const biggest = [...shieldedAssets].sort((a, b) => {
+            const av = a.balance ?? 0n;
+            const bv = b.balance ?? 0n;
+            return bv === av ? 0 : bv > av ? 1 : -1;
+          })[0];
+          if (biggest) setToken(biggest.token);
+        }
+      }
+      return next;
+    });
     setAmount("");
   };
 
@@ -449,14 +476,28 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             : "Withdrawals prove in your browser and land at your wallet."}
       </p>
 
-      <TokenModal
-        open={picking}
-        tokens={BOUNDARY_TOKENS}
-        allowImport
-        owner={wallet.address as `0x${string}` | null}
-        onClose={() => setPicking(false)}
-        onSelect={pick}
-      />
+      {/* Shielding starts from the wallet, so the picker offers what the wallet
+          can reach, pasted addresses included. Unshielding starts from the
+          shielded book and can only reach what is in it: offering the boundary
+          list there let someone pick a token they hold nothing of, while the
+          one they actually held was missing from the list entirely. */}
+      {mode === "shield" ? (
+        <TokenModal
+          open={picking}
+          tokens={BOUNDARY_TOKENS}
+          allowImport
+          owner={wallet.address as `0x${string}` | null}
+          onClose={() => setPicking(false)}
+          onSelect={pick}
+        />
+      ) : (
+        <TokenModal
+          open={picking}
+          assets={shieldedAssets}
+          onClose={() => setPicking(false)}
+          onSelect={pick}
+        />
+      )}
 
       <BoundaryConfirmModal
         open={confirming}

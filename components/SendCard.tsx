@@ -24,6 +24,7 @@ import SendConfirmModal from "./SendConfirmModal";
 import { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
+import QrCode from "./QrCode";
 
 type WalletState = ReturnType<typeof useWallet>;
 export type Tab = "send" | "receive";
@@ -434,6 +435,15 @@ function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: stri
           {address ?? "zcowl1…"}
         </code>
       </div>
+
+      {/* A hundred and sixteen characters is not something anyone reads aloud
+          or retypes, so the address is handed over by camera instead. */}
+      {address && (
+        <div className="bg-ink2 p-4 my-1 flex flex-col items-center gap-3">
+          <QrCode text={address} />
+          <span className="label-soft text-faint text-center">Scan to pay this address</span>
+        </div>
+      )}
 
       <div className="mt-3 px-1 space-y-2">
         <Row k="Reusable" v="the same address, every payment" />

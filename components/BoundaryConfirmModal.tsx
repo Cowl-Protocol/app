@@ -45,14 +45,14 @@ type Props = {
 
 const STEPS: Record<BoundaryMode, { k: string; d: string }[]> = {
   shield: [
-    { k: "Denominate", d: "Your amount goes out in shared sizes. Every 0.1 looks like every other 0.1" },
-    { k: "Prove", d: "Your browser proves each deposit inside the circuit, one at a time" },
+    { k: "Denominate", d: "The amount goes out in shared sizes. Every 0.1 looks like every other 0.1" },
+    { k: "Prove", d: "Each deposit is proven in the circuit, in your browser, one at a time" },
     { k: "Settle", d: "Your funds land under your shielded keys. Only you can spend them" },
   ],
   unshield: [
     { k: "Prove", d: "Your browser spends the notes inside the circuit. Nothing links them to their deposits" },
-    { k: "Submit", d: "The spend goes out; only nullifiers and fresh outputs go public" },
-    { k: "Arrive", d: "Value lands at your address in shared denominations" },
+    { k: "Submit", d: "The spend goes out. All that surfaces is nullifiers and fresh outputs" },
+    { k: "Arrive", d: "The value arrives at your address, in shared denominations" },
   ],
 };
 
@@ -277,8 +277,8 @@ export default function BoundaryConfirmModal({
                 )}
                 <p className="text-[0.7rem] text-faint leading-relaxed">
                   The relayer submits and pays the gas, so the chain records it and not your
-                  wallet. Its fee comes out of the same notes and is bound into the proof before
-                  anything moves, so it cannot charge more than the figure above.
+                  wallet. Its fee is bound into the proof before anything moves. It cannot charge a
+                  wei more than the figure above.
                 </p>
               </>
             )}

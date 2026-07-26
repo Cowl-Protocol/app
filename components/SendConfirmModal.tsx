@@ -95,7 +95,7 @@ export default function SendConfirmModal({
             )}
             {running && (
               <p className="text-[0.7rem] text-faint leading-relaxed pt-1">
-                Keep this tab open until the transaction lands.
+                Stay on this tab until the transaction lands.
               </p>
             )}
             {progress.error && (

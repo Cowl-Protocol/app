@@ -20,8 +20,8 @@ export default function Send() {
             Pay without <em>naming names.</em>
           </h1>
           <p className="text-muted text-sm mt-3 max-w-sm mx-auto">
-            Send from one shielded account to another. No wallet address on either end, and the
-            amount never reaches the tape.
+            Pay from one shielded account to another. No wallet address at either end. The
+            amount stays between the two of you.
           </p>
         </div>
 

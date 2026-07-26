@@ -464,7 +464,7 @@ function LockedPanel({
       <p className="text-xs text-muted leading-relaxed">
         {tab === "send"
           ? "One wallet signature derives your shielded keys. They live in this tab, sign the spend, and go nowhere else."
-          : "Your payment address comes from your shielded keys. One wallet signature derives them, in this tab only."}
+          : "Your payment address is built from your shielded keys, and one wallet signature is what builds them. It happens here, in this tab."}
       </p>
       <div className="mt-4">
         {wallet.address ? (
@@ -559,7 +559,7 @@ function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: stri
           </div>
           {shielded.balances.length === 0 ? (
             <p className="text-xs text-muted leading-relaxed">
-              Nothing yet. A payment lands here the moment its sender&apos;s transaction does.
+              Nothing yet. Payments show up here as soon as the sender&apos;s transaction lands.
             </p>
           ) : (
             <div className="space-y-1">
@@ -653,13 +653,13 @@ function MergeProgressModal({
           )}
           {running && (
             <p className="text-[0.7rem] text-faint leading-relaxed">
-              Keep this tab open until the last round lands. Rounds already on chain stay done.
+              Stay here until the last round lands. Whatever already reached the chain is done.
             </p>
           )}
           {progress?.error && <p className="text-xs text-[#ff6b6b] leading-relaxed">{progress.error}</p>}
           {progress?.done && (
             <p className="text-xs text-muted leading-relaxed">
-              Done. Your notes are merged; the amount you wanted should fit now.
+              Merged. The amount you were after fits in one spend now.
             </p>
           )}
 

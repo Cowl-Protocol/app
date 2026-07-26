@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { activeNetwork } from "./networks";
 import { fetchHoldings } from "./holdings";
 import { fetchTokenPriceUsd } from "./tokenPrice";
-import { TOKENS, type Token } from "./tokens";
+import { TOKENS, tokenAddressForField, tokenMetaForField, type Token } from "./tokens";
 import { fetchBalance } from "./useWallet";
 
 // One answer to "what does this wallet have, and what is it worth", shared by
@@ -89,6 +89,69 @@ export function useAssets(owner: `0x${string}` | null): { assets: Asset[]; loadi
       alive = false;
     };
   }, [owner]);
+
+  return { assets, loading };
+}
+
+/**
+ * The shielded book as the same kind of list the public one is.
+ *
+ * A private holding is a holding: it deserves the asset's real name, its icon
+ * and what it is worth, not a ticker and a raw number. The only thing that
+ * differs is where the balance came from, so the rows are built to the same
+ * shape and rendered by the same component.
+ *
+ * `known` is the public book, used purely as a metadata source — a token held
+ * on both sides is named once. A token held only privately still resolves,
+ * just from the leaner local lists.
+ */
+export function useShieldedAssets(
+  balances: { token: bigint; amount: bigint }[],
+  known: Asset[],
+): { assets: Asset[]; loading: boolean } {
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [loading, setLoading] = useState(false);
+  // Field ids and amounts, so a re-render with an equal list does no work.
+  const signature = balances.map((b) => `${b.token}:${b.amount}`).join(",");
+  const knownKey = known.map((a) => a.token.address).join(",");
+
+  useEffect(() => {
+    let alive = true;
+    if (balances.length === 0) {
+      setAssets([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    Promise.all(
+      balances.map(async (b) => {
+        const address = tokenAddressForField(b.token);
+        const meta = tokenMetaForField(b.token);
+        const hint =
+          known.find((a) => a.token.address.toLowerCase() === address.toLowerCase()) ??
+          (b.token === 0n ? known.find((a) => a.token.native) : undefined);
+        const token: Token = hint?.token ?? {
+          symbol: meta.symbol,
+          name: meta.symbol,
+          address,
+          decimals: meta.decimals,
+          ...(b.token === 0n ? { native: true } : {}),
+        };
+        // The public side already priced this one; asking again would spend a
+        // round of quotes to learn the same number.
+        const price = hint?.price ?? (await fetchTokenPriceUsd(token));
+        return { token, balance: b.amount, price, status: "held" as AssetStatus };
+      }),
+    ).then((rows) => {
+      if (!alive) return;
+      setAssets(rows);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, knownKey]);
 
   return { assets, loading };
 }

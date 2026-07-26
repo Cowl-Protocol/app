@@ -33,7 +33,7 @@ function buildPath(modules: boolean[][]): string {
       }
       let run = 1;
       while (x + run < n && row[x + run]) run++;
-      d += `M${x + QUIET} ${y + QUIET}h${run}v1h-${run}z`;
+      d += `M${x} ${y}h${run}v1h-${run}z`;
       x += run;
     }
   }
@@ -53,20 +53,25 @@ function rasterise(path: string, span: number): boolean[][] {
 const addr = deriveShieldedKeysFromSignature("0x" + "9c".repeat(65)).paymentAddress;
 const payload = addr.toUpperCase();
 
-const modules = encodeQR(payload, "raw") as boolean[][];
+const modules = encodeQR(payload, "raw", { border: QUIET }) as boolean[][];
 check("address is bech32m", /^zcowl1[02-9ac-hj-np-z]+$/.test(addr), `${addr.length} chars`);
 check(
   "upper case is the denser encoding",
-  modules.length < (encodeQR(addr, "raw") as boolean[][]).length,
-  `${modules.length} vs ${(encodeQR(addr, "raw") as boolean[][]).length} modules`,
+  modules.length < (encodeQR(addr, "raw", { border: QUIET }) as boolean[][]).length,
+  `${modules.length} vs ${(encodeQR(addr, "raw", { border: QUIET }) as boolean[][]).length} modules`,
 );
 
-const span = modules.length + QUIET * 2;
+// The encoder's matrix already carries the quiet zone, so the drawn span is it.
+const span = modules.length;
 const grid = rasterise(buildPath(modules), span);
-check("drawn grid carries the quiet zone", grid[0]!.every((v) => !v) && grid.every((r) => !r[0]), `${QUIET} modules`);
+check(
+  "drawn grid carries exactly one quiet zone",
+  grid[0]!.every((v) => !v) && grid.every((r) => !r[0]) && grid[QUIET]!.slice(QUIET).some((v) => v),
+  `${QUIET} modules`,
+);
 check(
   "drawn grid matches the encoder's matrix",
-  modules.every((row, y) => row.every((v, x) => grid[y + QUIET]![x + QUIET] === v)),
+  modules.every((row, y) => row.every((v, x) => grid[y]![x] === v)),
 );
 
 // Decode what we drew, not what we were given.

@@ -1,30 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useWallet, shortAddr } from "@/lib/useWallet";
-import { tokenMetaForField } from "@/lib/tokens";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
-import { useAssets, totalUsd } from "@/lib/assets";
+import { useAssets, useShieldedAssets, totalUsd, type Asset } from "@/lib/assets";
 import AssetRow from "@/components/AssetRow";
 import Spinner from "@/components/Spinner";
-import { formatUnitsExact } from "@/lib/prices";
-import { usePoolStats } from "@/lib/pool";
 import { useShielded } from "@/components/ShieldedProvider";
 import Header from "@/components/Header";
 import Banner from "@/components/Banner";
 import Footer from "@/components/Footer";
 import MaskLogo from "@/components/MaskLogo";
-import InfoTip from "@/components/InfoTip";
-import { TokenGlyph } from "@/components/TokenModal";
 
 type WalletState = ReturnType<typeof useWallet>;
 
-function fmt(n: number, max = 4): string {
-  return n.toLocaleString("en-US", { maximumFractionDigits: max });
-}
-
 export default function Portfolio() {
   const wallet = useWallet();
+  // Read once here: the public card renders it, and the private card borrows it
+  // to name and price the tokens it finds. Two reads would drift.
+  const { assets: publicAssets, loading: publicLoading } = useAssets(
+    wallet.address as `0x${string}` | null,
+  );
 
   return (
     <div className="min-h-screen flex flex-col grain">
@@ -38,13 +35,16 @@ export default function Portfolio() {
               One owner. <em>Two books.</em>
             </h1>
             <p className="text-muted text-sm mt-3 max-w-sm mx-auto">
-              The public book anyone can read. The private one is yours alone.
+              The private one is yours alone. The public book anyone can read.
             </p>
           </div>
 
+          {/* Private leads. It is the balance this whole app exists to give
+              someone, and putting the public side first framed it as the
+              default with privacy as an extra. */}
           <div className="grid md:grid-cols-2 gap-4 items-start">
-            <PublicCard wallet={wallet} />
-            <PrivateCard wallet={wallet} />
+            <PrivateCard wallet={wallet} publicAssets={publicAssets} />
+            <PublicCard wallet={wallet} assets={publicAssets} loading={publicLoading} />
           </div>
         </div>
       </main>
@@ -54,10 +54,17 @@ export default function Portfolio() {
   );
 }
 
-function PublicCard({ wallet }: { wallet: WalletState }) {
+function PublicCard({
+  wallet,
+  assets,
+  loading,
+}: {
+  wallet: WalletState;
+  assets: Asset[];
+  loading: boolean;
+}) {
   // The same assets the picker offers, read the same way — one source, so a
   // balance can never be right on one screen and blank on the other.
-  const { assets, loading } = useAssets(wallet.address as `0x${string}` | null);
   const { total, priced } = totalUsd(assets);
 
   return (
@@ -118,8 +125,7 @@ function PublicCard({ wallet }: { wallet: WalletState }) {
   );
 }
 
-function PrivateCard({ wallet }: { wallet: WalletState }) {
-  const stats = usePoolStats();
+function PrivateCard({ wallet, publicAssets }: { wallet: WalletState; publicAssets: Asset[] }) {
   const shielded = useShielded();
   const [copied, setCopied] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
@@ -158,6 +164,9 @@ function PrivateCard({ wallet }: { wallet: WalletState }) {
   };
 
   const unlocked = shielded.status === "ready";
+  // Named and priced like any other holding, because that is what it is.
+  const { assets, loading } = useShieldedAssets(unlocked ? shielded.balances : [], publicAssets);
+  const { total, priced } = totalUsd(assets);
 
   return (
     <div className="bg-card p-5 fade-up">
@@ -166,154 +175,107 @@ function PrivateCard({ wallet }: { wallet: WalletState }) {
           <MaskLogo className="h-3 w-auto text-acid" />
           <span className="label-mono text-[0.72rem] text-bone">Private</span>
         </span>
-        <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
-          Shielded pool
-        </span>
-      </div>
-
-      {/* What the chain shows — the pool as one crowd, no owners */}
-      <div className="grid grid-cols-2 gap-1 mb-1">
-        <Stat k="Pooled ETH" v={stats ? fmt(parseFloat(stats.eth), 6) : "…"} />
-        <Stat k="Pooled USDG" v={stats ? fmt(parseFloat(stats.usdg), 2) : "…"} />
-        <Stat
-          k="Notes"
-          tip="Shielded values in the pool's tree. The chain sees how many exist, never who owns which."
-          v={stats ? String(stats.notes) : "…"}
-        />
-        <Stat
-          k="Root"
-          tip="The tree's current fingerprint. Spends prove membership against it without pointing at any note."
-          tipAlign="right"
-          v={stats ? `${stats.root.slice(0, 10)}…` : "…"}
-          mono
-        />
-      </div>
-      <p className="text-[0.7rem] text-faint px-1 py-2 leading-relaxed">
-        This is everything the chain shows: one pool, one crowd. Which notes are yours isn&apos;t
-        written anywhere but with you.
-      </p>
-
-      {/* The owner's view — unlocked in this tab, or an invitation to */}
-      <div className="bg-ink2 p-4 mt-2">
-        <div className="flex items-center justify-between mb-2 gap-3">
-          <p className="label-soft text-faint">Your shielded book</p>
-          {unlocked && (
-            <span className="flex items-center gap-3">
-              <button
-                onClick={() => shielded.refresh()}
-                className="label-soft text-muted hover:text-bone"
-              >
-                {shielded.syncing ? "Syncing…" : "Refresh"}
-              </button>
-              <button onClick={shielded.lock} className="label-soft text-faint hover:text-bone">
-                Lock
-              </button>
-            </span>
-          )}
-        </div>
-
         {unlocked ? (
-          <>
-            {shielded.balances.length === 0 ? (
-              <p className="text-xs text-muted leading-relaxed">
-                No notes yet. Shield something and it appears here, visible only in this tab.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {shielded.balances.map((b) => {
-                  const meta = tokenMetaForField(b.token);
-                  return (
-                    <div key={b.token.toString()} className="flex items-center justify-between bg-ink px-3 py-2.5">
-                      <span className="text-sm text-bone">{meta.symbol}</span>
-                      <span className="flex flex-col items-end">
-                        <span className="font-data text-sm text-acid">
-                          {formatUnitsExact(b.amount, meta.decimals)}
-                        </span>
-                        <span className="text-[0.65rem] text-faint font-data">
-                          {b.notes} {b.notes === 1 ? "note" : "notes"}
-                        </span>
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {shielded.paymentAddress && (
-              <div className="mt-3">
-                <p className="label-soft text-faint mb-1.5">Payment address</p>
-                <div className="flex items-center justify-between bg-ink px-3 py-2.5 gap-3">
-                  <code className="font-data text-[0.7rem] text-muted truncate">
-                    {shielded.paymentAddress.slice(0, 18)}…{shielded.paymentAddress.slice(-6)}
-                  </code>
-                  <button
-                    onClick={() => copy(shielded.paymentAddress!)}
-                    className="label-soft text-muted hover:text-bone shrink-0"
-                  >
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                </div>
-                <p className="text-[0.68rem] text-faint mt-1.5 leading-relaxed">
-                  Anyone can pay it privately with cowl send.
-                </p>
-              </div>
-            )}
-          </>
+          <span className="flex items-center gap-3">
+            <button
+              onClick={() => shielded.refresh()}
+              className="label-soft text-muted hover:text-bone"
+            >
+              {shielded.syncing ? "Syncing…" : "Refresh"}
+            </button>
+            <button onClick={shielded.lock} className="label-soft text-faint hover:text-bone">
+              Lock
+            </button>
+          </span>
         ) : (
-          <>
-            <p className="text-xs text-muted leading-relaxed">
-              One wallet signature derives your shielded keys and reads your private balance, in
-              this tab only. Nothing touches a server.
-            </p>
-            <div className="mt-3">
-              {wallet.address ? (
-                <button
-                  onClick={unlock}
-                  disabled={shielded.status === "unlocking"}
-                  className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
-                >
-                  {shielded.status === "unlocking" ? "Check your wallet…" : "Unlock shielded account"}
-                </button>
-              ) : (
-                <button
-                  onClick={wallet.connect}
-                  disabled={wallet.connecting}
-                  className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
-                >
-                  {wallet.connecting ? "Connecting…" : "Connect wallet"}
-                </button>
-              )}
-              {unlockError && <p className="text-xs text-[#ff6b6b] mt-2 text-center">{unlockError}</p>}
-            </div>
-            <p className="text-[0.68rem] text-faint mt-3 leading-relaxed">
-              The terminal reads the same pool: cowl balance.
-            </p>
-          </>
+          <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">Locked</span>
         )}
       </div>
-    </div>
-  );
-}
 
-function Stat({
-  k,
-  v,
-  tip,
-  tipAlign,
-  mono,
-}: {
-  k: string;
-  v: string;
-  tip?: string;
-  tipAlign?: "left" | "right";
-  mono?: boolean;
-}) {
-  return (
-    <div className="bg-ink2 p-4">
-      <p className="flex items-center gap-1.5 label-soft text-faint mb-1.5">
-        {k}
-        {tip && <InfoTip text={tip} align={tipAlign} />}
-      </p>
-      <p className={`text-bone tracking-tight ${mono ? "font-data text-sm pt-1" : "font-data text-xl"}`}>{v}</p>
+      {unlocked ? (
+        <>
+          <div className="bg-ink2 p-4 mb-1">
+            <p className="label-soft text-faint mb-1.5">Total value</p>
+            <p className="font-data text-3xl text-acid tracking-tight">
+              {priced
+                ? `$${total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : "—"}
+            </p>
+            <p className="text-[0.7rem] text-faint mt-1.5">
+              Nobody can read this from your address. Not the amounts, not what you hold.
+            </p>
+          </div>
+
+          {assets.length === 0 && !loading ? (
+            <p className="text-xs text-muted leading-relaxed px-1 py-3">
+              Nothing here yet.{" "}
+              <Link href="/shield" className="text-acid hover:text-acid2 transition-colors">
+                Shield something
+              </Link>{" "}
+              and it shows up here, and nowhere else.
+            </p>
+          ) : (
+            <div>
+              {assets.map((a) => (
+                <AssetRow key={a.token.address} asset={a} loading={loading} />
+              ))}
+              {loading && assets.length === 0 && (
+                <p className="flex items-center gap-2 px-1 py-2 text-xs text-faint">
+                  <Spinner className="h-3 w-3" />
+                  Reading your private balance
+                </p>
+              )}
+            </div>
+          )}
+
+          {shielded.paymentAddress && (
+            <div className="mt-3">
+              <p className="label-soft text-faint mb-1.5">Your payment address</p>
+              <div className="flex items-center justify-between bg-ink2 px-3 py-2.5 gap-3">
+                <code className="font-data text-[0.7rem] text-muted truncate">
+                  {shielded.paymentAddress.slice(0, 18)}…{shielded.paymentAddress.slice(-6)}
+                </code>
+                <button
+                  onClick={() => copy(shielded.paymentAddress!)}
+                  className="label-soft text-muted hover:text-bone shrink-0"
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <p className="text-[0.68rem] text-faint mt-1.5 leading-relaxed">
+                Share it to be paid privately. It never names your wallet.
+              </p>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="bg-ink2 p-4">
+          <p className="text-xs text-muted leading-relaxed">
+            One wallet signature unlocks your private balance, in this tab only. Your keys are
+            built here and nothing touches a server.
+          </p>
+          <div className="mt-3">
+            {wallet.address ? (
+              <button
+                onClick={unlock}
+                disabled={shielded.status === "unlocking"}
+                className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
+              >
+                {shielded.status === "unlocking" ? "Check your wallet…" : "Unlock private balance"}
+              </button>
+            ) : (
+              <button
+                onClick={wallet.connect}
+                disabled={wallet.connecting}
+                className="w-full label-mono text-xs py-3 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
+              >
+                {wallet.connecting ? "Connecting…" : "Connect wallet"}
+              </button>
+            )}
+            {unlockError && <p className="text-xs text-[#ff6b6b] mt-2 text-center">{unlockError}</p>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

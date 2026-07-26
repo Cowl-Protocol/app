@@ -32,10 +32,10 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://app.cowlprotocol.com"),
   title: "Cowl · Trade unseen",
   description:
-    "Private trading on Robinhood Chain. Swap through the shielded pool and hide your edge from the crowd, not from the law.",
+    "Private trading on Robinhood Chain. Swap from a shielded balance and hide your edge from the crowd, not from the law.",
   openGraph: {
     title: "Cowl · Trade unseen",
-    description: "Private trading on Robinhood Chain. Swap through the shielded pool.",
+    description: "Private trading on Robinhood Chain. Swap from a shielded balance.",
     url: "https://app.cowlprotocol.com",
     siteName: "Cowl",
     type: "website",

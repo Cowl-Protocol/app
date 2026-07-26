@@ -20,7 +20,7 @@ export default function Earn() {
             Every move <em>pays.</em>
           </h1>
           <p className="text-muted text-sm mt-3 max-w-sm mx-auto">
-            Each season sets a pot of COWL. Every transaction through the pool grows your share of
+            Each season sets a pot of COWL. Every private transaction grows your share of
             it. Move more, take more.
           </p>
         </div>

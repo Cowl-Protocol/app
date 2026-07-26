@@ -167,7 +167,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               v={`1 ${pay.symbol} = ${fmt(rate(pay.symbol, receive.symbol), 4)} ${receive.symbol}`}
             />
             <Row k="Min. received" v={`${fmt(minReceived)} ${receive.symbol}`} />
-            <Row k="Route" v="Shielded pool → relayer" accent />
+            <Row k="Route" v="Shielded balance → relayer" accent />
             <Row k="Gas payer" v="Relayer (gasless)" accent />
           </div>
         )}
@@ -211,7 +211,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
       {/* Footer note */}
       <p className="text-center text-xs text-faint mt-4">
         {LIVE ? (
-          "Trades route through the shielded pool. Your wallet never appears as the counterparty."
+          "Trades settle from your shielded balance. Your wallet never appears as the counterparty."
         ) : (
           <>
             <Link href="/shield" className="text-muted hover:text-bone transition-colors">
@@ -224,7 +224,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
             >
               the cowl CLI
             </a>{" "}
-            trades through the pool right now.
+            trades privately right now.
           </>
         )}
       </p>

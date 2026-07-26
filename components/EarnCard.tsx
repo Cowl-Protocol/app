@@ -15,7 +15,7 @@ import InfoTip from "./InfoTip";
 const LIVE = false;
 
 const WAYS = [
-  { k: "Transact", d: "Every transaction through the pool counts. Shield in, unshield out, send, trade. The more you move, the bigger your share" },
+  { k: "Transact", d: "Every private transaction counts. Shield in, unshield out, send, trade. The more you move, the bigger your share" },
   { k: "Stay private", d: "Transactions nobody can see still count. You show yours when you claim, to us and no one else" },
   { k: "Hold", d: "A slice of every season goes to the ones holding COWL through it" },
 ];
@@ -32,7 +32,7 @@ export default function EarnCard() {
           <span className="flex items-center gap-2">
             <InfoTip
               align="right"
-              text="Each season sets a fixed pot of COWL. Every transaction grows your share of it, and payouts land inside the shielded pool. The chain records that a distribution happened, never who earned what."
+              text="Each season sets a fixed pot of COWL. Every transaction grows your share of it, and payouts land in your shielded balance. The chain records that a distribution happened, never who earned what."
             />
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
               {LIVE ? "Season one" : "Coming soon"}
@@ -111,7 +111,7 @@ export default function EarnCard() {
       <p className="text-center text-xs text-faint mt-4">
         {shielded.poolReady ? (
           <>
-            The pool is{" "}
+            It is{" "}
             <Link href="/shield" className="text-muted hover:text-bone transition-colors">
               open today
             </Link>

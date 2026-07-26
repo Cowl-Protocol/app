@@ -47,7 +47,7 @@ const STEPS: Record<BoundaryMode, { k: string; d: string }[]> = {
   shield: [
     { k: "Denominate", d: "The amount travels in shared tiers where every 0.1 looks like every other 0.1" },
     { k: "Prove", d: "Your browser proves each deposit's leaf insertion inside the circuit" },
-    { k: "Settle", d: "Notes land in the pool under your shielded keys. Only you can spend them" },
+    { k: "Settle", d: "Your funds land under your shielded keys. Only you can spend them" },
   ],
   unshield: [
     { k: "Prove", d: "Your browser spends the notes inside the circuit. Nothing links them to their deposits" },
@@ -145,7 +145,7 @@ export default function BoundaryConfirmModal({
             {running && progress.step === "record" && (
               <p className="flex items-center gap-2 text-[0.7rem] text-muted leading-relaxed pt-1">
                 <Spinner className="h-3 w-3 text-acid" />
-                Filing your notes. The funds are already in the pool.
+                Filing your notes. The funds have already moved.
               </p>
             )}
             {running && (

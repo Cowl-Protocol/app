@@ -345,7 +345,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           <span className="flex items-center gap-2">
             <InfoTip
               align="right"
-              text="The pool's public edge. Shielding in and unshielding out are visible on chain; what happens inside is not."
+              text="The line where private meets public. Going in and coming out are visible on chain; everything you do while shielded is not."
             />
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
               Boundary
@@ -619,7 +619,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         {!unlocked
           ? "One signature derives your shielded keys. They never leave this tab."
           : mode === "shield"
-            ? "Inside the pool, every note looks like every other."
+            ? "Once shielded, every note looks like every other."
             : "Withdrawals prove in your browser and land at your wallet."}
       </p>
 

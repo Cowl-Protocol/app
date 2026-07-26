@@ -20,8 +20,7 @@ export default function Receive() {
             Get paid. <em>Stay unread.</em>
           </h1>
           <p className="text-muted text-sm mt-3 max-w-sm mx-auto">
-            One address to hand out, as many times as you like. What lands behind it is yours to
-            see and nobody else&apos;s to count.
+            One address, reusable, safe to post anywhere. Only you can see what arrives at it.
           </p>
         </div>
 

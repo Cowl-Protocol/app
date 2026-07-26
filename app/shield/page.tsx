@@ -20,7 +20,7 @@ export default function Shield() {
             Cross the <em>boundary.</em>
           </h1>
           <p className="text-muted text-sm mt-3 max-w-sm mx-auto">
-            Shield to go private, unshield to come back. Inside the pool, every note looks like
+            Shield to go private, unshield to come back. Once shielded, every note looks like
             every other.
           </p>
         </div>

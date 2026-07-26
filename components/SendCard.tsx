@@ -207,10 +207,10 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
           <span className="flex items-center gap-2">
             <InfoTip
               align="right"
-              text="Payments between shielded accounts never leave the pool. The chain records that a spend happened, not the asset, the amount or who was on either end."
+              text="A payment between shielded accounts never becomes public. The chain records that a spend happened, not the asset, the amount, or who was on either end."
             />
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
-              Inside the pool
+              Fully private
             </span>
           </span>
         </div>
@@ -303,7 +303,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
             {value > 0n && (
               <div className="mt-3 px-1 space-y-2 fade-up">
                 <Row k="On chain" v="two nullifiers, two commitments" />
-                <Row k="Amount" v="stays inside the pool" accent />
+                <Row k="Amount" v="never becomes public" accent />
                 <Row k="Proving" v="In your browser" accent />
                 <Row k="Wallet confirmations" v="1" />
                 <Row k="Gas payer" v="You" />

@@ -16,7 +16,7 @@ import Spinner from "./Spinner";
 const STEP_LABEL: Record<OpStep, string> = {
   unlock: "sign to unlock in your wallet",
   wait: "waiting",
-  sync: "syncing the pool",
+  sync: "reading the chain",
   prove: "proving in your browser",
   confirm: "confirm in your wallet",
   mined: "landed",

@@ -19,7 +19,7 @@ type Props = {
 const STEPS = [
   { k: "Prove", d: "Prove the spend inside the circuit. No wallet, no amount revealed" },
   { k: "Route", d: "Relayer submits the swap and pays gas" },
-  { k: "Re-shield", d: "Output lands back in the shielded pool as a fresh note" },
+  { k: "Re-shield", d: "What you receive lands back in your shielded balance" },
 ];
 
 export default function ConfirmModal({

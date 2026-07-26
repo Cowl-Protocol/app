@@ -24,7 +24,7 @@ type Props = {
 
 const STEPS = [
   { k: "Prove", d: "Your browser spends your notes inside the circuit and mints two fresh ones" },
-  { k: "Submit", d: "Your wallet carries the proof. The pool checks it and swaps the notes" },
+  { k: "Submit", d: "The proof goes on chain and is checked there. Your old notes retire, fresh ones take their place" },
   { k: "Arrive", d: "Only the recipient's view key opens their note. Change comes back to you" },
 ];
 
@@ -90,7 +90,7 @@ export default function SendConfirmModal({
             {running && progress.step === "record" && (
               <p className="flex items-center gap-2 text-[0.7rem] text-muted leading-relaxed pt-1">
                 <Spinner className="h-3 w-3 text-acid" />
-                Reading the pool back. The payment has already landed.
+                Reading the chain back. The payment has already landed.
               </p>
             )}
             {running && (
@@ -103,7 +103,7 @@ export default function SendConfirmModal({
             )}
             {progress.done && (
               <p className="text-xs text-muted leading-relaxed pt-1">
-                Sent. The recipient sees it the moment they scan the pool.
+                Sent. The recipient sees it the moment they scan for payments.
               </p>
             )}
 
@@ -150,7 +150,7 @@ export default function SendConfirmModal({
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-faint font-data">Amount</span>
-              <span className="font-data text-acid text-right">stays inside the pool</span>
+              <span className="font-data text-acid text-right">never becomes public</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-faint font-data">Wallet confirmations</span>

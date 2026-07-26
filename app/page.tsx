@@ -20,7 +20,7 @@ export default function Home() {
             Trade <em>unseen.</em>
           </h1>
           <p className="text-muted text-sm mt-3 max-w-sm mx-auto">
-            Swap through the shielded pool. Hide your edge from the crowd, not from the law.
+            Swap from a shielded balance. Hide your edge from the crowd, not from the law.
           </p>
         </div>
 

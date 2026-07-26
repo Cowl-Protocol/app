@@ -25,6 +25,22 @@ const BOUNDARY_TOKENS = [tokenBySymbol("ETH"), tokenBySymbol("WETH"), tokenBySym
 
 const SPREADS = ["45s", "20m", "3h"] as const;
 
+/**
+ * Type size for an amount, chosen by how long it is.
+ *
+ * MAX is exact to the last base unit, so it can run to twenty-odd characters.
+ * At a fixed display size that number ran under the token picker and out past
+ * the card's edge; shrinking it keeps the whole figure readable, which matters
+ * more here than a constant headline size.
+ */
+function amountSize(text: string): string {
+  const n = text.length;
+  if (n <= 9) return "text-3xl md:text-4xl";
+  if (n <= 13) return "text-2xl md:text-3xl";
+  if (n <= 18) return "text-xl md:text-2xl";
+  return "text-lg md:text-xl";
+}
+
 function fmtUnits(v: bigint, decimals: number): string {
   const s = formatUnits(v, decimals);
   return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
@@ -337,9 +353,9 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             </span>
             {mode === "shield" ? publicSide : shieldedSide}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <input
-              className="amount text-3xl md:text-4xl text-bone placeholder:text-faint outline-none font-data tracking-tight"
+              className={`amount min-w-0 ${amountSize(amount || "0")} text-bone placeholder:text-faint outline-none font-data tracking-tight`}
               inputMode="decimal"
               placeholder="0"
               value={amount}
@@ -385,8 +401,11 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             </span>
             {mode === "shield" ? shieldedSide : publicSide}
           </div>
-          <div className="flex items-center gap-3">
-            <span className="amount text-3xl md:text-4xl font-data tracking-tight text-acid">
+          <div className="flex items-center gap-3 min-w-0">
+            <span
+              className={`min-w-0 truncate ${amountSize(amt > 0 ? amount : "0")} font-data tracking-tight text-acid`}
+              title={amt > 0 ? amount : undefined}
+            >
               {amt > 0 ? amount : <span className="text-faint">0</span>}
             </span>
             <span className="shrink-0 label-mono text-[0.78rem] text-muted pr-1">{token.symbol}</span>
@@ -621,9 +640,11 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
 
 function Row({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
   return (
-    <div className="flex items-center justify-between text-xs gap-4">
+    // items-start, not centre: a fee carried to the last base unit wraps to a
+    // second line rather than running off the card, and its label stays put.
+    <div className="flex items-start justify-between text-xs gap-4">
       <span className="text-faint font-data shrink-0">{k}</span>
-      <span className={`font-data text-right ${accent ? "text-acid" : "text-muted"}`}>{v}</span>
+      <span className={`font-data text-right min-w-0 break-all ${accent ? "text-acid" : "text-muted"}`}>{v}</span>
     </div>
   );
 }

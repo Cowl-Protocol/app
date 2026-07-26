@@ -26,6 +26,10 @@ type Props = {
   remainderLabel?: string;
   exact: boolean;
   spread?: string;
+  /** A relayer is standing by to carry this run, so no wallet confirmation comes. */
+  gasless?: boolean;
+  /** The relayer's total fee for the run, already formatted with its symbol. */
+  relayFee?: string;
   /** Live run state from the shielded context, when a run is under way. */
   progress: OpProgress | null;
   onExecute: () => void;
@@ -40,7 +44,7 @@ const STEPS: Record<BoundaryMode, { k: string; d: string }[]> = {
   ],
   unshield: [
     { k: "Prove", d: "Your browser spends the notes inside the circuit. Nothing links them to their deposits" },
-    { k: "Submit", d: "Your wallet sends the spend; only nullifiers and fresh outputs go public" },
+    { k: "Submit", d: "The spend goes out; only nullifiers and fresh outputs go public" },
     { k: "Arrive", d: "Value lands at your address in shared denominations" },
   ],
 };
@@ -55,6 +59,8 @@ export default function BoundaryConfirmModal({
   remainderLabel,
   exact,
   spread,
+  gasless,
+  relayFee,
   progress,
   onExecute,
   onClose,
@@ -215,16 +221,27 @@ export default function BoundaryConfirmModal({
             )}
             <div className="flex items-center justify-between text-xs">
               <span className="text-faint font-data">Wallet confirmations</span>
-              <span className="font-data text-muted text-right">
-                {parts.length === 1 ? "1" : `${parts.length}${spread ? ", at random moments" : ", back to back"}`}
+              <span className={`font-data text-right ${gasless ? "text-acid" : "text-muted"}`}>
+                {gasless
+                  ? "None"
+                  : parts.length === 1
+                    ? "1"
+                    : `${parts.length}${spread ? ", at random moments" : ", back to back"}`}
               </span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-faint font-data">Gas payer</span>
-              <span className="font-data text-muted">
-                {mode === "shield" ? "You, per deposit" : "You, per withdrawal"}
+              <span className={`font-data ${gasless ? "text-acid" : "text-muted"}`}>
+                {gasless ? "The relayer" : mode === "shield" ? "You, per deposit" : "You, per withdrawal"}
               </span>
             </div>
+            {gasless && (
+              <p className="text-[0.7rem] text-faint leading-relaxed">
+                The relayer submits and pays the gas, so the chain records it and not your wallet.
+                Its fee{relayFee ? ` of ${relayFee}` : ""} comes out of the notes you are
+                spending, bound into the proof before anything moves.
+              </p>
+            )}
 
             {spread && (
               <p className="text-[0.7rem] text-faint leading-relaxed">

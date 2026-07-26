@@ -50,8 +50,9 @@ import {
 } from "@/lib/shielded/pool";
 import { loadPool, loadWallet, savePool, saveWallet } from "@/lib/shielded/store";
 import { syncShieldedPool } from "@/lib/shielded/sync";
-import { approvePool, simulateSpend, submitShield, submitSpend } from "@/lib/shielded/contract";
+import { approvePool, fieldToAddress, simulateSpend, submitShield, submitSpend } from "@/lib/shielded/contract";
 import { proveShieldOffThread, proveTransferOffThread } from "@/lib/shielded/prover";
+import { relaySpend, tryQuote } from "@/lib/relay";
 
 const net = activeNetwork();
 
@@ -71,6 +72,8 @@ export type OpProgress = {
   step: OpStep;
   txs: PartTx[];
   done: boolean;
+  /** True while a relayer is carrying the parts, so the screen can say who pays. */
+  relayed?: boolean;
   error?: string;
   /** When the current spread wait ends, so the modal can count down to it. */
   waitUntil?: number;
@@ -452,6 +455,9 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       // has seen and take a second bite out of the shielded balance.
       const landed = new Set(done.map((t) => t.part));
       const firstOpen = parts.findIndex((_, i) => !landed.has(i));
+      // Re-asked per part: a relayer can go down mid-run, and the screen has to
+      // stop claiming gasless the moment the wallet starts paying.
+      let relayed = false;
       const prog: OpProgress = {
         op: "unshield",
         symbol,
@@ -483,6 +489,21 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             applyScan(sync.pool, wallet, k);
             saveWallet(net.key, k, wallet);
 
+            // Gasless is the default, so the quote is asked for first and the
+            // fee it names is bound into the proof. A relayer that is down, or
+            // serving another chain, simply yields null and the spend falls
+            // back to the wallet — the withdrawal must not go down with it.
+            const quote = await tryQuote(
+              net.defaultRelay,
+              net.chainId,
+              net.contracts.pool!,
+              tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`),
+            );
+            if (relayed !== !!quote) {
+              relayed = !!quote;
+              prog.relayed = relayed;
+            }
+
             const planned = planUnshield(
               sync.pool,
               wallet,
@@ -491,6 +512,8 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
               tokenField,
               payout,
               BigInt(net.chainId),
+              quote?.fee ?? 0n,
+              quote ? BigInt(quote.relayer) : 0n,
             );
 
             prog.step = "prove";
@@ -505,9 +528,20 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             publish();
             try {
               // Free dry-run first: a stale root or spent note rejects here
-              // instead of inside a wallet-confirmed transaction.
-              await simulateSpend(wc.account.address, proof.spend, ciphertexts, proof.proof);
-              const receipt = await submitSpend(wc, proof.spend, ciphertexts, proof.proof);
+              // instead of inside a wallet-confirmed transaction. Simulated as
+              // the relayer when one is carrying it, since that is the account
+              // the pool will see.
+              await simulateSpend(
+                quote ? quote.relayer : wc.account.address,
+                proof.spend,
+                ciphertexts,
+                proof.proof,
+              );
+              // Relayed, no wallet confirmation is asked for at all: the proof
+              // binds the relayer and its fee, so it submits or it reverts.
+              const receipt = quote
+                ? await relaySpend(net.defaultRelay!, proof.spend, ciphertexts, proof.proof)
+                : await submitSpend(wc, proof.spend, ciphertexts, proof.proof);
 
               prog.step = "mined";
               prog.txs.push({ hash: receipt.hash, part: i });

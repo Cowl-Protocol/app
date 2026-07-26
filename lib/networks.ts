@@ -75,6 +75,10 @@ export const NETWORKS: Record<string, NetworkDef> = {
       // unreachable from some regions, so it sits last rather than first.
       "https://rpc.mainnet.chain.robinhood.com",
     ],
+    // A relayer is bound to one chain at boot, so mainnet gets its own daemon
+    // behind a path on the same host rather than a second DNS name. A quote
+    // that comes back naming another chain or another pool is discarded.
+    defaultRelay: "https://relay.cowlprotocol.com/mainnet",
     explorer: "https://robinhoodchain.blockscout.com",
     currency: { name: "Ether", symbol: "ETH", decimals: 18 },
     testnet: false,

@@ -6,6 +6,7 @@ import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { decompose, groupParts, MAX_BOUNDARY_TXS, sharedCeiling, tiersFor } from "@/lib/denominations";
 import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
+import { useRelayQuote } from "@/lib/relay";
 import { useTokenPrice } from "@/lib/tokenPrice";
 import { parseWindow } from "@/lib/spread";
 import { shortAddr, type useWallet } from "@/lib/useWallet";
@@ -87,6 +88,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     unlocked ? shielded.balances : [],
     publicAssets,
   );
+
+  // Asked before anything signs, so the rows below can name the gas payer and
+  // the confirmation count truthfully rather than promising gasless and then
+  // opening a wallet.
+  const { quote: relay } = useRelayQuote(tokenField, mode === "unshield");
+  const gasless = mode === "unshield" && !!relay;
 
   const amt = parseFloat(amount) || 0;
   const balUnknown = publicBal === null;
@@ -432,13 +439,26 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             <Row
               k="Wallet confirmations"
               v={
-                execParts.length === 1
-                  ? "1"
-                  : `${execParts.length}${spread ? ", at random moments" : ", back to back"}`
+                gasless
+                  ? "None"
+                  : execParts.length === 1
+                    ? "1"
+                    : `${execParts.length}${spread ? ", at random moments" : ", back to back"}`
               }
+              accent={gasless}
             />
             <Row k="Proving" v="In your browser" accent />
-            <Row k="Gas payer" v={mode === "shield" ? "You, per deposit" : "You, per withdrawal"} />
+            <Row
+              k="Gas payer"
+              v={gasless ? "The relayer" : mode === "shield" ? "You, per deposit" : "You, per withdrawal"}
+              accent={gasless}
+            />
+            {gasless && relay && (
+              <Row
+                k="Relayer fee"
+                v={`${fmtUnits(relay.fee * BigInt(execParts.length), token.decimals)} ${token.symbol}, from your notes`}
+              />
+            )}
           </div>
         )}
 
@@ -534,6 +554,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         }
         exact={exact}
         spread={spread ?? undefined}
+        gasless={gasless}
+        relayFee={
+          gasless && relay
+            ? `${fmtUnits(relay.fee * BigInt(execParts.length), token.decimals)} ${token.symbol}`
+            : undefined
+        }
         progress={shielded.progress}
         onExecute={execute}
         onClose={closeConfirm}

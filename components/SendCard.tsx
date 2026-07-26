@@ -254,11 +254,16 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                       <span>
                         {formatUnitsExact(balance, decimals)} {token.symbol}
                       </span>
-                      {sendable > 0n && (
+                      {balance > 0n && (
                         <button
-                          // The field parses what it is given, so MAX writes a
+                          // MAX is the whole balance, not the slice that happens
+                          // to fit in two notes today. Merging can reach the rest,
+                          // and the button below offers exactly that, so capping
+                          // MAX here would hide money the account really holds.
+                          //
+                          // The field parses what it is given, so this writes a
                           // plain decimal, never the grouped display form.
-                          onClick={() => setAmount(formatUnits(sendable, decimals))}
+                          onClick={() => setAmount(formatUnits(balance, decimals))}
                           className="text-acid hover:text-acid2 font-data text-[0.65rem]"
                         >
                           MAX

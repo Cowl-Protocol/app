@@ -25,10 +25,13 @@ export default function Header({ wallet }: { wallet: WalletState }) {
   return (
     <header className="w-full px-4 md:px-10 py-5 flex items-center justify-between gap-3">
       <div className="flex items-center gap-4 md:gap-8 min-w-0">
-        <a href="https://cowlprotocol.com" className="flex items-center gap-2.5 select-none shrink-0">
+        {/* The mark goes home inside the app. Sending it to the marketing site
+            drops someone out of the thing they were using, wallet and unlocked
+            account and all, to read about the thing they were using. */}
+        <Link href="/" className="flex items-center gap-2.5 select-none shrink-0">
           <Logo className="h-7 w-auto text-acid" />
           <span className="display text-[1.35rem] leading-none hidden sm:inline">Cowl</span>
-        </a>
+        </Link>
 
         {/* Wide screens carry every destination at once. */}
         <nav className="hidden xl:flex items-center gap-6">

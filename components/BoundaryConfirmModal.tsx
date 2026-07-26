@@ -34,6 +34,8 @@ type Props = {
   relayDrawn?: string;
   /** Estimated native-coin gas when the wallet is the one paying. */
   networkFee?: string;
+  /** The relayer's fee as a percent of the withdrawal, when it is a steep one. */
+  steepFeePct?: number;
   /** Live run state from the shielded context, when a run is under way. */
   progress: OpProgress | null;
   onExecute: () => void;
@@ -67,6 +69,7 @@ export default function BoundaryConfirmModal({
   relayFee,
   relayDrawn,
   networkFee,
+  steepFeePct,
   progress,
   onExecute,
   onClose,
@@ -260,6 +263,13 @@ export default function BoundaryConfirmModal({
                     <span className="text-faint font-data">Leaves your notes</span>
                     <span className="font-data text-acid">{relayDrawn}</span>
                   </div>
+                )}
+                {steepFeePct !== undefined && (
+                  <p className="text-[0.7rem] text-[#ffb84d] leading-relaxed">
+                    That fee is {steepFeePct.toFixed(0)}% of what you are withdrawing. It costs one
+                    spend&apos;s gas whatever the size, so a larger withdrawal pays the same and a
+                    smaller share.
+                  </p>
                 )}
                 <p className="text-[0.7rem] text-faint leading-relaxed">
                   The relayer submits and pays the gas, so the chain records it and not your

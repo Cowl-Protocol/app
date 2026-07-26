@@ -122,6 +122,21 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const relayFeeTotal = gasless && relay ? relay.fee * BigInt(execParts.length) : 0n;
   const drawnFromNotes = requiredTotal + relayFeeTotal;
 
+  /**
+   * The relayer's fee as a share of what is being withdrawn.
+   *
+   * The fee is a fixed cost — one spend's gas — so its share falls as the
+   * amount grows: the same 0.61 dollars is half of a small withdrawal and a
+   * rounding error on a large one. Naming the share is the only way someone
+   * sees that, since in token terms a cheap token makes an ordinary fee look
+   * enormous.
+   */
+  const feeSharePct =
+    relayFeeTotal > 0n && requiredTotal > 0n
+      ? Number((relayFeeTotal * 1000n) / requiredTotal) / 10
+      : 0;
+  const feeIsSteep = feeSharePct >= 10;
+
   const amt = parseFloat(amount) || 0;
   const balUnknown = publicBal === null;
   const bal = parseFloat(publicBal ?? "0") || 0;
@@ -516,6 +531,16 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                   v={`${fmtUnits(drawnFromNotes, token.decimals)} ${token.symbol}`}
                   accent
                 />
+                {/* Not a blocker. The withdrawal is perfectly valid; it is just
+                    a bad trade at this size, and only the person doing it can
+                    decide whether that matters. */}
+                {feeIsSteep && (
+                  <p className="text-[0.7rem] text-[#ffb84d] leading-relaxed pt-1">
+                    That fee is {feeSharePct.toFixed(0)}% of what you are withdrawing. It costs one
+                    spend&apos;s gas whatever the size, so withdrawing more at once makes it a
+                    smaller share — or pay the gas yourself and skip it.
+                  </p>
+                )}
               </>
             ) : (
               <Row
@@ -630,6 +655,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         networkFee={
           !gasless && selfGas !== null ? `~${fmtUnits(selfGas, 18)} ${net.currency.symbol}` : undefined
         }
+        steepFeePct={gasless && feeIsSteep ? feeSharePct : undefined}
         progress={shielded.progress}
         onExecute={execute}
         onClose={closeConfirm}

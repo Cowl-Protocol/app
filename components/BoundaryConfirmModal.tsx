@@ -10,6 +10,7 @@ import { activeNetwork } from "@/lib/networks";
 import type { Token } from "@/lib/tokens";
 import type { OpProgress } from "./ShieldedProvider";
 import RunProgress from "./RunProgress";
+import Spinner from "./Spinner";
 import { TokenGlyph } from "./TokenModal";
 
 export type BoundaryMode = "shield" | "unshield";
@@ -143,7 +144,7 @@ export default function BoundaryConfirmModal({
 
             {running && progress.step === "record" && (
               <p className="flex items-center gap-2 text-[0.7rem] text-muted leading-relaxed pt-1">
-                <span className="inline-block h-2.5 w-2.5 border-2 border-acid border-t-transparent rounded-full spin" />
+                <Spinner className="h-3 w-3 text-acid" />
                 Filing your notes. The funds are already in the pool.
               </p>
             )}

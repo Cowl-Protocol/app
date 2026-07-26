@@ -5,6 +5,7 @@
 // the live run through the shielded context.
 import type { OpProgress } from "./ShieldedProvider";
 import RunProgress from "./RunProgress";
+import Spinner from "./Spinner";
 import { TokenGlyph } from "./TokenModal";
 
 type Props = {
@@ -88,7 +89,7 @@ export default function SendConfirmModal({
 
             {running && progress.step === "record" && (
               <p className="flex items-center gap-2 text-[0.7rem] text-muted leading-relaxed pt-1">
-                <span className="inline-block h-2.5 w-2.5 border-2 border-acid border-t-transparent rounded-full spin" />
+                <Spinner className="h-3 w-3 text-acid" />
                 Reading the pool back. The payment has already landed.
               </p>
             )}

@@ -11,6 +11,7 @@ import { formatUnits } from "viem";
 import { activeNetwork } from "@/lib/networks";
 import { formatRemaining } from "@/lib/spread";
 import type { OpProgress, OpStep } from "./ShieldedProvider";
+import Spinner from "./Spinner";
 
 const STEP_LABEL: Record<OpStep, string> = {
   unlock: "sign to unlock in your wallet",
@@ -78,7 +79,7 @@ export default function RunProgress({ progress }: { progress: OpProgress }) {
                 <span className="font-data text-xs text-[#ff6b6b]">failed</span>
               ) : isCurrent ? (
                 <span className="font-data text-xs text-muted">
-                  <span className="inline-block h-2.5 w-2.5 mr-2 align-middle border-2 border-acid border-t-transparent rounded-full spin" />
+                  <Spinner className="h-3 w-3 mr-2 align-middle text-acid" />
                   {progress.step === "wait" && progress.waitUntil
                     ? `firing in ${formatRemaining(progress.waitUntil - Date.now())}`
                     : STEP_LABEL[progress.step]}

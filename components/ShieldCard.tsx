@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { tokenBySymbol, type Token } from "@/lib/tokens";
 import { activeNetwork } from "@/lib/networks";
-import { decompose, groupParts, MAX_BOUNDARY_TXS, sharedCeiling, tiersFor } from "@/lib/denominations";
+import { decompose, groupParts, maxAfterFee, MAX_BOUNDARY_TXS, sharedCeiling, tiersFor } from "@/lib/denominations";
 import { formatBalance, formatUnitsExact, usdOf } from "@/lib/prices";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { useRelayQuote, useSelfGasEstimate } from "@/lib/relay";
@@ -232,7 +232,16 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           </span>
           {mode === "unshield" && shieldedBal > 0n && (
             <button
-              onClick={() => setAmount(formatUnits(shieldedBal, token.decimals))}
+              // MAX has to leave the relayer's fee behind, or it fills the field
+              // with an amount the book can never cover.
+              onClick={() =>
+                setAmount(
+                  formatUnits(
+                    maxAfterFee(shieldedBal, relay?.fee ?? 0n, token.decimals, exact),
+                    token.decimals,
+                  ),
+                )
+              }
               className="text-acid hover:text-acid2 font-data text-[0.65rem]"
             >
               MAX

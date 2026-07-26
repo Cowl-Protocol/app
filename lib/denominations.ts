@@ -71,3 +71,41 @@ export function groupParts(parts: bigint[]): { tier: bigint; count: number }[] {
   }
   return rows;
 }
+
+/**
+ * The most that can be withdrawn when a fee is charged per part.
+ *
+ * MAX means "all of it", but a relayed withdrawal pays its fee out of the same
+ * notes, so the whole balance never fits: the amount plus the fee is always
+ * more than the book holds, and pressing MAX put the card straight into an
+ * error it could not talk its way out of.
+ *
+ * Each part really costs its tier plus one fee, so the answer is found by
+ * spending that way: take the largest tier the remaining budget can afford,
+ * again and again, then step down. Subtracting a guessed fee from the balance
+ * instead — the obvious move — collapses to zero whenever the fee is large
+ * next to the balance, because the amount left splits into more parts than it
+ * can pay for, and every correction overshoots further.
+ */
+export function maxAfterFee(
+  balance: bigint,
+  feePerPart: bigint,
+  decimals: number,
+  exact: boolean,
+): bigint {
+  if (feePerPart <= 0n) return balance;
+  // Exact is a single transaction, so it is a single fee.
+  if (exact) return balance > feePerPart ? balance - feePerPart : 0n;
+
+  let budget = balance;
+  let amount = 0n;
+  let parts = 0;
+  for (const tier of tiersFor(decimals)) {
+    while (parts < MAX_BOUNDARY_TXS && budget >= tier + feePerPart) {
+      budget -= tier + feePerPart;
+      amount += tier;
+      parts++;
+    }
+  }
+  return amount;
+}

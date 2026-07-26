@@ -56,11 +56,7 @@ function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
     <span className="relative inline-flex h-8 w-8 shrink-0 overflow-hidden rounded-full">
       <span
         className={`absolute inset-0 flex items-center justify-center font-data tracking-tight ${size}`}
-        style={{
-          background: GLYPH_BG[symbol] ?? "#1c2027",
-          color: fg,
-          boxShadow: symbol === "COWL" ? "0 0 0 1px #d7fb08 inset" : "none",
-        }}
+        style={{ background: GLYPH_BG[symbol] ?? "#1c2027", color: fg }}
       >
         {initials}
       </span>
@@ -76,6 +72,16 @@ function TokenGlyph({ symbol, src }: { symbol: string; src?: string }) {
             setFailed(true);
           }}
           className="absolute inset-0 h-8 w-8 object-cover"
+        />
+      )}
+      {/* The ring draws last so it lands on the rim evenly. Underneath the icon,
+          which is a square black plate cropped to this circle, it only showed
+          wherever the crop let it through, which read as a broken edge. */}
+      {symbol === "COWL" && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-full"
+          style={{ boxShadow: "0 0 0 1px #d7fb08 inset" }}
         />
       )}
     </span>

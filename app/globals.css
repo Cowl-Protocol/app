@@ -186,36 +186,46 @@ input.amount::-webkit-inner-spin-button {
 /* Scrollbars that admit they exist.
  *
  * macOS hides overlay scrollbars until the wheel moves, so a panel with more
- * below the fold looks like a panel that simply ends — the confirm modal was
+ * below the fold looks like a panel that simply ends: the confirm modal was
  * cutting its own execute button off with nothing on screen to suggest there
  * was more.
  *
- * `overflow-y: scroll` rather than `auto` is the part that matters: auto only
- * reserves the track once the content overflows, and by then the reader has
- * already decided the panel ended. The track is always there, so the thumb is
- * always there to be seen. Colours are literal, not variables, because a
- * scrollbar that silently falls back to the browser default is exactly the
- * failure this is fixing. */
+ * The order below is not a style choice. Chrome drops every ::-webkit-scrollbar
+ * rule the moment `scrollbar-width` or `scrollbar-color` appears on the same
+ * element, and the standard properties can only ask for a thin overlay bar,
+ * which macOS still hides. So the webkit rules stand alone and the standard
+ * ones are quarantined behind a query only browsers without them will match.
+ *
+ * `overflow-y: scroll` rather than `auto` is the other half: auto reserves the
+ * track only once the content overflows, and by then the reader has already
+ * decided the panel ended. */
 .scroll-acid {
   overflow-y: scroll;
-  scrollbar-width: thin;
-  scrollbar-color: #d7fb08 rgba(236, 236, 231, 0.06);
 }
 .scroll-acid::-webkit-scrollbar {
   width: 10px;
+  background: rgba(236, 236, 231, 0.06);
 }
 .scroll-acid::-webkit-scrollbar-track {
   background: rgba(236, 236, 231, 0.06);
 }
 .scroll-acid::-webkit-scrollbar-thumb {
-  background: #d7fb08;
-  /* Squared off, like every other edge here, and inset so the track reads as
-     a channel the thumb runs in rather than a border on the panel. */
+  background-color: #d7fb08;
+  /* Squared off like every other edge here, inset so the track reads as a
+     channel the thumb runs in rather than a border on the panel. */
   border-radius: 0;
   border: 2px solid transparent;
   background-clip: content-box;
+  min-height: 32px;
 }
 .scroll-acid::-webkit-scrollbar-thumb:hover {
-  background: #e6ff52;
-  background-clip: content-box;
+  background-color: #e6ff52;
+}
+
+/* Firefox and anything else with no webkit scrollbar pseudo-elements. */
+@supports not selector(::-webkit-scrollbar) {
+  .scroll-acid {
+    scrollbar-width: thin;
+    scrollbar-color: #d7fb08 rgba(236, 236, 231, 0.06);
+  }
 }

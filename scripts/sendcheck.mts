@@ -17,7 +17,7 @@
 import { fieldToHex, hexToField, randomField } from "../lib/shielded/field";
 import { commitment, nullifier, type Note } from "../lib/shielded/note";
 import { encryptNote, tryDecryptNote } from "../lib/shielded/crypto";
-import { decodePaymentAddress, deriveShieldedKeysFromSignature } from "../lib/shielded/keys";
+import { decodePaymentAddress, deriveShieldedKeysFromSignature, isPaymentAddress } from "../lib/shielded/keys";
 import { computeRoot } from "../lib/shielded/tree";
 import { applyScan, computeBalance, emptyPool, emptyWallet, planSend } from "../lib/shielded/pool";
 import { proveTransfer } from "../lib/shielded/prove";
@@ -36,6 +36,22 @@ const PAY = 2n * 10n ** 16n; // 0.02
 const sender = deriveShieldedKeysFromSignature("0x" + "a7".repeat(65));
 const recipient = deriveShieldedKeysFromSignature("0x" + "5c".repeat(65));
 check("two distinct shielded accounts", sender.mpk !== recipient.mpk);
+
+// ---- the address survives the trip, and a typo does not ---------------------
+{
+  const addr = recipient.paymentAddress;
+  const decoded = decodePaymentAddress(addr);
+  check(
+    "payment address roundtrip",
+    decoded.mpk === recipient.mpk && decoded.viewPubHex === recipient.viewPubHex,
+  );
+  // Flip one character mid-address: the bech32m checksum must catch it, the
+  // exact failure the old hex format paid straight into unspendable keys.
+  const i = Math.floor(addr.length / 2);
+  const flipped = addr.slice(0, i) + (addr[i] === "q" ? "p" : "q") + addr.slice(i + 1);
+  check("one mistyped character is rejected", !isPaymentAddress(flipped));
+  check("truncated address is rejected", !isPaymentAddress(addr.slice(0, -1)));
+}
 
 // ---- a pool holding one note of the sender's, among strangers ---------------
 const pool = emptyPool();

@@ -295,7 +295,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                 className="w-full bg-transparent text-bone placeholder:text-faint outline-none font-data text-sm resize-none leading-relaxed break-all disabled:text-faint"
                 rows={2}
                 spellCheck={false}
-                placeholder="zcowl:0x…"
+                placeholder="zcowl1…"
                 value={to}
                 disabled={!LIVE}
                 onChange={(e) => setTo(e.target.value)}
@@ -451,7 +451,7 @@ function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: stri
           )}
         </div>
         <code className={`block font-data text-[0.72rem] break-all leading-relaxed ${address ? "text-bone" : "text-faint"}`}>
-          {address ?? "zcowl:0x…"}
+          {address ?? "zcowl1…"}
         </code>
       </div>
 

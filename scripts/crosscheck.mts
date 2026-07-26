@@ -14,7 +14,7 @@ import { createPublicClient, defineChain, fallback, http } from "viem";
 import { poseidon as appPoseidon, randomField, fieldToHex, hexToField } from "../lib/shielded/field";
 import { commitment as appCommitment, nullifier as appNullifier, type Note } from "../lib/shielded/note";
 import { encryptNote as appEncrypt, tryDecryptNote as appDecrypt, packCipher as appPack, unpackCipher as appUnpack } from "../lib/shielded/crypto";
-import { deriveShieldedKeysFromSignature, SHIELDED_SIGN_MESSAGE } from "../lib/shielded/keys";
+import { deriveShieldedKeysFromSignature, decodePaymentAddress as appDecodeAddress, SHIELDED_SIGN_MESSAGE } from "../lib/shielded/keys";
 import { computeRoot, appendProof } from "../lib/shielded/tree";
 import { alignPoolToChain, emptyPool, applyScan, emptyWallet, computeBalance } from "../lib/shielded/pool";
 import { proveShield } from "../lib/shielded/prove";
@@ -23,7 +23,7 @@ import { proveShield } from "../lib/shielded/prove";
 import { poseidon as cliPoseidon } from "../../cli/src/shielded/field.js";
 import { commitment as cliCommitment, nullifier as cliNullifier } from "../../cli/src/shielded/note.js";
 import { encryptNote as cliEncrypt, tryDecryptNote as cliDecrypt, packCipher as cliPack } from "../../cli/src/shielded/crypto.js";
-import { deriveShieldedKeys as cliDeriveKeys } from "../../cli/src/shielded/keys.js";
+import { deriveShieldedKeys as cliDeriveKeys, decodePaymentAddress as cliDecodeAddress } from "../../cli/src/shielded/keys.js";
 
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -80,7 +80,16 @@ function check(name: string, ok: boolean, detail = "") {
   const k1 = deriveShieldedKeysFromSignature(sig1);
   const k2 = deriveShieldedKeysFromSignature(sig2);
   check("keys stable across derivations", k1.sk === k2.sk && k1.mpk === k2.mpk && k1.viewPriv === k2.viewPriv);
-  check("payment address well-formed", /^zcowl:0x[0-9a-fA-F]{130}$/.test(k1.paymentAddress));
+  check("payment address is bech32m", /^zcowl1[02-9ac-hj-np-z]+$/.test(k1.paymentAddress));
+  {
+    const app = appDecodeAddress(k1.paymentAddress);
+    check("app decodes its own address", app.mpk === k1.mpk && app.viewPubHex === k1.viewPubHex);
+    // The CLI pays app-issued addresses, so its decoder must read them too.
+    const cli = cliDecodeAddress(k1.paymentAddress);
+    check("cli decodes the app's address", cli.mpk === k1.mpk && cli.viewPubHex === k1.viewPubHex);
+    const legacy = appDecodeAddress(`zcowl:0x${fieldToHex(k1.mpk).slice(2)}${k1.viewPubHex}`);
+    check("legacy hex address still decodes", legacy.mpk === k1.mpk && legacy.viewPubHex === k1.viewPubHex);
+  }
 
   // The signature space must not collide with the CLI's private-key space.
   const cliKeys = cliDeriveKeys("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");

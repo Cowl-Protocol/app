@@ -104,7 +104,7 @@ type ShieldedContextValue = {
     spreadMs?: number | null;
   }) => Promise<void>;
   sendExec: (args: {
-    /** zcowl: payment address of the recipient. */
+    /** zcowl payment address of the recipient. */
     to: string;
     value: bigint;
     tokenField: bigint;

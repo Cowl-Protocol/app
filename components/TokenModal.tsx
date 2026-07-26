@@ -7,6 +7,7 @@ import { TOKENS, type Token } from "@/lib/tokens";
 import { fetchTokenList } from "@/lib/tokenList";
 import { useAssets, type Asset } from "@/lib/assets";
 import AssetRow from "./AssetRow";
+import Spinner from "./Spinner";
 import { publicClient } from "@/lib/useWallet";
 
 // Real token icon (self-hosted under /public/tokens), with a graceful fall back to
@@ -139,6 +140,8 @@ type Props = {
   assets?: Asset[];
   /** What to say when `assets` is empty, since only the caller knows why. */
   emptyNote?: string;
+  /** The fixed list is still being read, so an empty one means "wait", not "none". */
+  assetsLoading?: boolean;
   /** Let a pasted ERC-20 address import a custom asset (RWA stocks and the rest). */
   allowImport?: boolean;
   /** Connected wallet — rows show its balance, largest holdings first. */
@@ -153,6 +156,7 @@ export default function TokenModal({
   tokens,
   assets: fixedAssets,
   emptyNote,
+  assetsLoading: fixedLoading,
   allowImport,
   owner,
   onClose,
@@ -344,12 +348,23 @@ export default function TokenModal({
           )}
 
           {listLoading && allowImport && (
-            <p className="px-5 py-3 text-xs text-faint">Loading the token list…</p>
+            <p className="flex items-center gap-2 px-5 py-3 text-xs text-faint">
+              <Spinner className="h-3 w-3" />
+              Loading the token list
+            </p>
+          )}
+
+          {/* An empty list that is still being read is not an empty book. */}
+          {fixed && fixedLoading && list.length === 0 && (
+            <p className="flex items-center gap-2 px-5 py-4 text-xs text-faint">
+              <Spinner className="h-3 w-3" />
+              Reading your shielded book
+            </p>
           )}
 
           {/* A fixed list can legitimately be empty, and silence there reads as
               a broken picker rather than an empty book. */}
-          {fixed && list.length === 0 && (
+          {fixed && !fixedLoading && list.length === 0 && (
             <p className="px-5 py-4 text-xs text-muted leading-relaxed">
               {needle
                 ? "Nothing here matches that."
@@ -358,7 +373,10 @@ export default function TokenModal({
           )}
 
           {lookup.state === "loading" && (
-            <p className="px-5 py-4 text-xs text-faint">Reading token…</p>
+            <p className="flex items-center gap-2 px-5 py-4 text-xs text-faint">
+              <Spinner className="h-3 w-3" />
+              Reading token
+            </p>
           )}
           {lookup.state === "error" && (
             <p className="px-5 py-4 text-xs text-faint">Couldn&apos;t read a token at that address.</p>

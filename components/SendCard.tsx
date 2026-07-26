@@ -26,6 +26,7 @@ import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
 import QrCode from "./QrCode";
+import Spinner from "./Spinner";
 
 type WalletState = ReturnType<typeof useWallet>;
 export type Tab = "send" | "receive";
@@ -60,7 +61,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   // The public book, borrowed only to name and price what the shielded one
   // holds, the same way the portfolio does it.
   const { assets: publicAssets } = useAssets(wallet.address as `0x${string}` | null);
-  const { assets: shieldedAssets } = useShieldedAssets(
+  const { assets: shieldedAssets, loading: shieldedLoading } = useShieldedAssets(
     unlocked ? shielded.balances : [],
     publicAssets,
   );
@@ -251,9 +252,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   ) : (
                     <span>nothing shielded yet</span>
                   )}
-                  {shielded.syncing && (
-                    <span className="inline-block h-2 w-2 border-2 border-acid border-t-transparent rounded-full spin" />
-                  )}
+                  {shielded.syncing && <Spinner className="h-3 w-3 text-acid" />}
                 </span>
               </div>
               <div className="flex items-center gap-3">
@@ -356,6 +355,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
       <TokenModal
         open={picking}
         assets={shieldedAssets}
+        assetsLoading={shieldedLoading}
         emptyNote={
           unlocked
             ? "Your shielded book is empty. Shield something and it shows up here."

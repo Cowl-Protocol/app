@@ -16,6 +16,7 @@ import { useShielded } from "./ShieldedProvider";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
+import Spinner from "./Spinner";
 
 type WalletState = ReturnType<typeof useWallet>;
 
@@ -102,7 +103,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   // What the shielded book actually holds, named and priced like any other
   // asset. This is the only thing an unshield can draw from.
   const { assets: publicAssets } = useAssets(wallet.address as `0x${string}` | null);
-  const { assets: shieldedAssets } = useShieldedAssets(
+  const { assets: shieldedAssets, loading: shieldedLoading } = useShieldedAssets(
     unlocked ? shielded.balances : [],
     publicAssets,
   );
@@ -110,7 +111,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   // Asked before anything signs, so the rows below can name the gas payer and
   // the confirmation count truthfully rather than promising gasless and then
   // opening a wallet.
-  const { quote: relay } = useRelayQuote(tokenField, mode === "unshield");
+  const { quote: relay, checking: relayChecking } = useRelayQuote(tokenField, mode === "unshield");
   const gasless = mode === "unshield" && !!relay;
   // The other half of the same question: what it costs when the wallet pays.
   const selfGas = useSelfGasEstimate(execParts.length, !gasless && value > 0n);
@@ -278,9 +279,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               MAX
             </button>
           )}
-          {shielded.syncing && (
-            <span className="inline-block h-2 w-2 border-2 border-acid border-t-transparent rounded-full spin" />
-          )}
+          {shielded.syncing && <Spinner className="h-3 w-3 text-acid" />}
         </>
       ) : mode === "unshield" ? (
         // Unshield's main button already offers the unlock. Two ways to do the
@@ -498,19 +497,35 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             <Row
               k="Wallet confirmations"
               v={
-                gasless
-                  ? "None"
-                  : execParts.length === 1
-                    ? "1"
-                    : `${execParts.length}${spread ? ", at random moments" : ", back to back"}`
+                relayChecking
+                  ? "not known yet"
+                  : gasless
+                    ? "None"
+                    : execParts.length === 1
+                      ? "1"
+                      : `${execParts.length}${spread ? ", at random moments" : ", back to back"}`
               }
               accent={gasless}
+              busy={relayChecking}
             />
             <Row k="Proving" v="In your browser" accent />
+            {/* Until the relayer has answered, who pays is genuinely unknown.
+                Printing "You" and flipping to "The relayer" a moment later is
+                stating a fact nobody has checked, on the row that decides
+                whether a wallet is about to open. */}
             <Row
               k="Gas payer"
-              v={gasless ? "The relayer" : mode === "shield" ? "You, per deposit" : "You, per withdrawal"}
+              v={
+                relayChecking
+                  ? "checking the relayer"
+                  : gasless
+                    ? "The relayer"
+                    : mode === "shield"
+                      ? "You, per deposit"
+                      : "You, per withdrawal"
+              }
               accent={gasless}
+              busy={relayChecking}
             />
             {/* The arithmetic in full, whoever pays. A cost with no number
                 beside it is not a price, and one that only appears after the
@@ -547,11 +562,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                 k="Network fee"
                 v={
                   selfGas === null
-                    ? "estimating…"
+                    ? "estimating"
                     : `~${fmtUnits(selfGas, 18)} ${net.currency.symbol}${
                         execParts.length > 1 ? ` · ${execParts.length} transactions` : ""
                       }`
                 }
+                busy={selfGas === null}
               />
             )}
           </div>
@@ -625,6 +641,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         <TokenModal
           open={picking}
           assets={shieldedAssets}
+          assetsLoading={shieldedLoading}
           emptyNote={
             unlocked
               ? "Your shielded book is empty. Shield something and it shows up here."
@@ -664,13 +681,20 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   );
 }
 
-function Row({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
+function Row({ k, v, accent, busy }: { k: string; v: string; accent?: boolean; busy?: boolean }) {
   return (
     // items-start, not centre: a fee carried to the last base unit wraps to a
     // second line rather than running off the card, and its label stays put.
     <div className="flex items-start justify-between text-xs gap-4">
       <span className="text-faint font-data shrink-0">{k}</span>
-      <span className={`font-data text-right min-w-0 break-all ${accent ? "text-acid" : "text-muted"}`}>{v}</span>
+      <span
+        className={`flex items-center gap-2 font-data text-right min-w-0 break-all ${
+          busy ? "text-faint" : accent ? "text-acid" : "text-muted"
+        }`}
+      >
+        {busy && <Spinner className="h-3 w-3 shrink-0" />}
+        {v}
+      </span>
     </div>
   );
 }

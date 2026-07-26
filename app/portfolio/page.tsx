@@ -181,7 +181,14 @@ function PrivateCard({ wallet, publicAssets }: { wallet: WalletState; publicAsse
               onClick={() => shielded.refresh()}
               className="label-soft text-muted hover:text-bone"
             >
-              {shielded.syncing ? "Syncing…" : "Refresh"}
+              {shielded.syncing ? (
+                <span className="flex items-center gap-1.5">
+                  <Spinner className="h-3 w-3" />
+                  Syncing
+                </span>
+              ) : (
+                "Refresh"
+              )}
             </button>
             <button onClick={shielded.lock} className="label-soft text-faint hover:text-bone">
               Lock

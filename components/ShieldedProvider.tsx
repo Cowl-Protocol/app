@@ -41,6 +41,8 @@ import { appendProof } from "@/lib/shielded/tree";
 import {
   applyScan,
   computeBalance,
+  mergesNeeded,
+  planConsolidate,
   planSend,
   planUnshield,
   recordMyNote,
@@ -115,6 +117,20 @@ type ShieldedContextValue = {
     decimals: number;
     spreadMs?: number | null;
     done?: PartTx[];
+  }) => Promise<void>;
+  /**
+   * Merge notes until one spend can carry `target`, or as far as it can get.
+   *
+   * Runs the rounds back to back rather than asking for each: the count is
+   * known before it starts, and stopping halfway leaves a book no better
+   * arranged than it was.
+   */
+  consolidateExec: (args: {
+    tokenField: bigint;
+    symbol: string;
+    decimals: number;
+    /** How much one spend should be able to move when this is done. */
+    target: bigint;
   }) => Promise<void>;
   sendExec: (args: {
     /** zcowl payment address of the recipient. */
@@ -666,6 +682,92 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
     [ensureKeys, scanAndPublish],
   );
 
+  /**
+   * Merge the two smallest notes, over and over, until a spend of `target`
+   * fits in two. Each round is an ordinary join-split back to yourself.
+   */
+  const consolidateExec = useCallback<ShieldedContextValue["consolidateExec"]>(
+    async ({ tokenField, symbol, decimals, target }) => {
+      const wc = walletClientRef.current;
+      if (!wc?.account) throw new Error("Connect a wallet first.");
+
+      const k = await ensureKeys();
+      const sync0 = await syncShieldedPool();
+      if (!sync0) throw new Error(`No shielded pool on ${net.label}.`);
+      const wallet0 = loadWallet(net.key, k);
+      applyScan(sync0.pool, wallet0, k);
+      saveWallet(net.key, k, wallet0);
+
+      const rounds = mergesNeeded(wallet0, tokenField, target);
+      if (rounds < 0) throw new Error("Even merged, this balance cannot cover that amount.");
+      if (rounds === 0) return;
+
+      // One "part" per round, so the modal counts them the way it counts parts.
+      const prog: OpProgress = {
+        op: "unshield",
+        symbol,
+        decimals,
+        parts: Array.from({ length: rounds }, () => 0n),
+        current: 0,
+        step: "unlock",
+        txs: [],
+        done: false,
+      };
+      const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
+      publish();
+
+      try {
+        for (let i = 0; i < rounds; i++) {
+          prog.current = i;
+          for (let attempt = 0; ; attempt++) {
+            prog.step = "sync";
+            publish();
+            const sync = await syncShieldedPool();
+            if (!sync) throw new Error(`No shielded pool on ${net.label}.`);
+            const wallet = loadWallet(net.key, k);
+            applyScan(sync.pool, wallet, k);
+            saveWallet(net.key, k, wallet);
+
+            const planned = planConsolidate(sync.pool, wallet, k, tokenField, BigInt(net.chainId));
+
+            prog.step = "prove";
+            publish();
+            const proof = await proveTransferOffThread(planned.plan);
+            const ciphertexts: [`0x${string}`, `0x${string}`] = [
+              packCipher(encryptNote(planned.outputs[0]!.note, planned.outputs[0]!.viewPubHex)),
+              packCipher(encryptNote(planned.outputs[1]!.note, planned.outputs[1]!.viewPubHex)),
+            ];
+
+            prog.step = "confirm";
+            publish();
+            try {
+              await simulateSpend(wc.account.address, proof.spend, ciphertexts, proof.proof);
+              const receipt = await submitSpend(wc, proof.spend, ciphertexts, proof.proof);
+              prog.step = "mined";
+              prog.txs.push({ hash: receipt.hash, part: i });
+              publish();
+              prog.step = "record";
+              publish();
+              await withDeadline(syncShieldedPool(), RECORD_DEADLINE).catch(() => null);
+              break;
+            } catch (e) {
+              if (isStaleRoot(e) && attempt < 2) continue;
+              throw e;
+            }
+          }
+        }
+        scanAndPublish(k);
+        prog.done = true;
+        publish();
+      } catch (e) {
+        prog.error = opError(e);
+        publish();
+        throw e;
+      }
+    },
+    [ensureKeys, scanAndPublish],
+  );
+
   const value = useMemo<ShieldedContextValue>(
     () => ({
       status,
@@ -683,6 +785,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       shieldExec,
       unshieldExec,
       sendExec,
+      consolidateExec,
     }),
     [
       status,
@@ -699,6 +802,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       shieldExec,
       unshieldExec,
       sendExec,
+      consolidateExec,
     ],
   );
 

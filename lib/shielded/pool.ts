@@ -171,6 +171,81 @@ function planInputs(inputs: StoredNote[]): SpendPlan["inputs"] {
  * change stays private. A relayed spend adds `fee` for `relayer`, bound into the
  * proof; self-submitted spends carry both as zero.
  */
+/**
+ * Merge the two smallest notes of `token` into one, back to yourself.
+ *
+ * A join-split reads two notes at most, so a balance scattered across many
+ * small ones can hold far more than any single spend can move. Each round
+ * turns two notes into one, which means n notes settle in n minus two rounds
+ * and the ceiling climbs every time.
+ *
+ * Nothing about it is special on chain: two nullifiers, two commitments, no
+ * public value, exactly like a payment to yourself.
+ */
+export function planConsolidate(
+  pool: Pool,
+  wallet: Wallet,
+  keys: ShieldedKeys,
+  token: bigint,
+  chainId: bigint,
+): PlannedSpend {
+  const avail = wallet.notes
+    .filter((n) => !n.spent && hexToField(n.token) === token && hexToField(n.value) > 0n)
+    .sort((a, b) => (hexToField(a.value) < hexToField(b.value) ? -1 : 1));
+  if (avail.length < 3) {
+    throw new Error("Nothing to merge — two notes or fewer already spend together.");
+  }
+  const [a, b] = [avail[0]!, avail[1]!];
+  const total = hexToField(a.value) + hexToField(b.value);
+  const out0: Note = { value: total, token, mpk: keys.mpk, blinding: randomField() };
+  const out1: Note = { value: 0n, token, mpk: keys.mpk, blinding: randomField() };
+  return {
+    plan: {
+      sk: keys.sk,
+      nk: keys.nk,
+      token,
+      inputs: planInputs([a, b]),
+      outputs: [outParts(out0), outParts(out1)],
+      leaves: pool.commitments.map(hexToField),
+      publicToken: token,
+      publicValue: 0n,
+      fee: 0n,
+      recipient: 0n,
+      relayer: 0n,
+      chainId,
+    },
+    outputs: [
+      { note: out0, viewPubHex: keys.viewPubHex },
+      { note: out1, viewPubHex: keys.viewPubHex },
+    ],
+    inputLeaves: [a.leafIndex, b.leafIndex],
+  };
+}
+
+/**
+ * How many merges it takes before one spend can move `target` of `token`.
+ *
+ * Each round retires the two smallest notes and mints their sum, so the two
+ * largest grow every time. Counted here rather than guessed, because "merge a
+ * few times and try again" is not an instruction anyone can follow.
+ */
+export function mergesNeeded(wallet: Wallet, token: bigint, target: bigint): number {
+  let values = wallet.notes
+    .filter((n) => !n.spent && hexToField(n.token) === token && hexToField(n.value) > 0n)
+    .map((n) => hexToField(n.value))
+    .sort((a, b) => (a < b ? -1 : 1));
+
+  const top2 = (v: bigint[]) => v.slice(-2).reduce((s, x) => s + x, 0n);
+  let rounds = 0;
+  while (top2(values) < target && values.length >= 3) {
+    const merged = values[0]! + values[1]!;
+    values = [...values.slice(2), merged].sort((a, b) => (a < b ? -1 : 1));
+    rounds++;
+  }
+  // Unreachable even after merging everything: the book simply holds less.
+  return top2(values) >= target ? rounds : -1;
+}
+
 export function planUnshield(
   pool: Pool,
   wallet: Wallet,

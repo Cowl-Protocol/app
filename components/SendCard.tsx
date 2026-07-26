@@ -140,7 +140,9 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   if (value > 0n && !trimmedTo) label = "Enter a payment address";
   if (trimmedTo && !validTo) label = "That is not a zcowl address";
   if (overBalance && token) label = `Insufficient shielded ${token.symbol}`;
-  if (overSendable && token) label = `One send moves up to ${formatUnitsExact(sendable, decimals)} ${token.symbol}`;
+  if (overSendable && token) {
+    label = `Merge notes to send ${formatUnitsExact(value, decimals)} ${token.symbol}`;
+  }
 
   const unlock = async () => {
     setUnlockError(null);
@@ -160,6 +162,20 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
     } catch {
       /* clipboard blocked — the address is on screen to copy manually */
     }
+  };
+
+  /**
+   * The cap is not a wall, it is a shape the book is in: two notes at a time.
+   * Merging fixes it, so the button that reports the cap is the button that
+   * clears it. Announcing a limit with no way past it is the same dead end the
+   * unlock row used to be.
+   */
+  const merge = () => {
+    if (!token) return;
+    shielded.clearProgress();
+    shielded
+      .consolidateExec({ tokenField: token.field, symbol: token.symbol, decimals, target: value })
+      .catch(() => {});
   };
 
   const execute = () => {
@@ -299,6 +315,14 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
               />
             </div>
 
+            {overSendable && token && (
+              <p className="text-[0.7rem] text-faint leading-relaxed mt-3">
+                One spend reads two notes, and your two largest come to{" "}
+                {formatUnitsExact(sendable, decimals)} {token.symbol}. Merging combines them into
+                bigger notes, back to yourself, until this amount fits in two.
+              </p>
+            )}
+
             {/* What this costs, and what it shows */}
             {value > 0n && (
               <div className="mt-3 px-1 space-y-2 fade-up">
@@ -326,6 +350,13 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   className="w-full label-mono text-sm py-4 bg-[#3a1414] text-[#ff6b6b] hover:bg-[#4a1818] transition-colors"
                 >
                   Switch to {wallet.network.label}
+                </button>
+              ) : overSendable && token ? (
+                <button
+                  onClick={merge}
+                  className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
+                >
+                  {label}
                 </button>
               ) : (
                 <button

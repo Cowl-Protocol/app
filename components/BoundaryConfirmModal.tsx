@@ -50,7 +50,7 @@ const STEPS: Record<BoundaryMode, { k: string; d: string }[]> = {
     { k: "Settle", d: "Your funds land under your shielded keys. Only you can spend them" },
   ],
   unshield: [
-    { k: "Prove", d: "Your browser spends the notes inside the circuit. Nothing links them to their deposits" },
+    { k: "Prove", d: "The proving happens here, in your browser. Nothing links these notes to their deposits" },
     { k: "Submit", d: "The spend goes out. All that surfaces is nullifiers and fresh outputs" },
     { k: "Arrive", d: "The value arrives at your address, in shared denominations" },
   ],

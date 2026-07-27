@@ -728,8 +728,14 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   );
 
   /**
-   * Merge the two smallest notes, over and over, until a spend of `target`
-   * fits in two. Each round is an ordinary join-split back to yourself.
+   * Merge the two largest notes, over and over, until a spend of `target` fits
+   * in two. Each round is an ordinary join-split back to yourself.
+   *
+   * Gasless like everything else, which matters here for a reason of its own:
+   * merging is what someone does immediately before a private send, so a run of
+   * self-paid rounds would put their wallet on chain moments before the relayed
+   * spend it was clearing the way for. That timing lines the two up. Relaying
+   * the rounds too is what stops the preparation from identifying the payment.
    */
   const consolidateExec = useCallback<ShieldedContextValue["consolidateExec"]>(
     async ({ tokenField, symbol, decimals, target }) => {
@@ -743,11 +749,19 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       applyScan(sync0.pool, wallet0, k);
       saveWallet(net.key, k, wallet0);
 
-      const rounds = mergesNeeded(wallet0, tokenField, target);
+      const relayToken =
+        tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`);
+      const quote0 = await tryQuote(net.defaultRelay, net.chainId, net.contracts.pool!, relayToken);
+
+      // Each relayed round pays a fee out of the pair it merges, so the count
+      // has to be taken against that fee or it reads low and the run stops
+      // short — the exact failure the screen's round number must not have.
+      const rounds = mergesNeeded(wallet0, tokenField, target, quote0?.fee ?? 0n);
       if (rounds < 0) throw new Error("Even merged, this balance cannot cover that amount.");
       if (rounds === 0) return;
 
       // One "part" per round, so the modal counts them the way it counts parts.
+      let relayed = !!quote0;
       const prog: OpProgress = {
         op: "unshield",
         symbol,
@@ -757,15 +771,28 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
         step: "unlock",
         txs: [],
         done: false,
+        relayed,
       };
       const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
       publish();
 
+      // A ceiling on rounds rather than a fixed count. The estimate above is
+      // taken against one quote, and gas moves: a dearer fee mid-run buys less
+      // ceiling per round than was counted on, and stopping at the original
+      // number would leave the send still capped after paying for every round.
+      // So the loop asks the book itself whether it is there yet, and the
+      // headroom is what keeps a relayer whose price is climbing from turning
+      // that into an unbounded run.
+      const MAX_EXTRA_ROUNDS = 3;
+
       try {
-        for (let i = 0; i < rounds; i++) {
-          prog.current = i;
+        merging: for (let i = 0; ; i++) {
+          if (i >= rounds + MAX_EXTRA_ROUNDS) {
+            throw new Error("Merging is not gaining ground — the relayer's fee is eating each round.");
+          }
           for (let attempt = 0; ; attempt++) {
             prog.step = "sync";
+            prog.current = i;
             publish();
             const sync = await syncShieldedPool();
             if (!sync) throw new Error(`No shielded pool on ${net.label}.`);
@@ -773,7 +800,31 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             applyScan(sync.pool, wallet, k);
             saveWallet(net.key, k, wallet);
 
-            const planned = planConsolidate(sync.pool, wallet, k, tokenField, BigInt(net.chainId));
+            // Re-asked per round: a relayer can go down mid-run, and the fee it
+            // charges is what the next round has to be planned against.
+            const quote = await tryQuote(net.defaultRelay, net.chainId, net.contracts.pool!, relayToken);
+            if (relayed !== !!quote) {
+              relayed = !!quote;
+              prog.relayed = relayed;
+            }
+
+            // Done the moment the book can carry the target, which is the
+            // question the run actually exists to answer.
+            const left = mergesNeeded(wallet, tokenField, target, quote?.fee ?? 0n);
+            if (left === 0) break merging;
+            if (left < 0) throw new Error("Even merged, this balance cannot cover that amount.");
+            // The estimate was low; let the row appear rather than overflow it.
+            while (prog.parts.length < i + 1) prog.parts.push(0n);
+
+            const planned = planConsolidate(
+              sync.pool,
+              wallet,
+              k,
+              tokenField,
+              BigInt(net.chainId),
+              quote?.fee ?? 0n,
+              quote ? BigInt(quote.relayer) : 0n,
+            );
 
             prog.step = "prove";
             publish();
@@ -786,8 +837,15 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             prog.step = "confirm";
             publish();
             try {
-              await simulateSpend(wc.account.address, proof.spend, ciphertexts, proof.proof);
-              const receipt = await submitSpend(wc, proof.spend, ciphertexts, proof.proof);
+              await simulateSpend(
+                quote ? quote.relayer : wc.account.address,
+                proof.spend,
+                ciphertexts,
+                proof.proof,
+              );
+              const receipt = quote
+                ? await relaySpend(net.defaultRelay!, proof.spend, ciphertexts, proof.proof)
+                : await submitSpend(wc, proof.spend, ciphertexts, proof.proof);
               prog.step = "mined";
               prog.txs.push({ hash: receipt.hash, part: i });
               publish();
@@ -801,6 +859,9 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             }
           }
         }
+        // The estimate was an upper bound on a moving fee, so a run that got
+        // there sooner should not keep reporting rounds it never had to make.
+        prog.parts = prog.parts.slice(0, Math.max(prog.txs.length, 1));
         scanAndPublish(k);
         prog.done = true;
         publish();

@@ -755,9 +755,15 @@ function MergeProgressModal({
 
         <div className="px-5 pb-5 space-y-3">
           <p className="text-xs text-muted leading-relaxed">
-            Each round combines your two smallest {symbol} notes into one, back to yourself. Nothing
-            leaves your balance.
+            Each round combines your two largest {symbol} notes into one, back to yourself, lifting
+            what a single payment can carry.
           </p>
+          {progress?.relayed && (
+            <p className="text-[0.7rem] text-faint leading-relaxed">
+              The relayer submits each round and pays the gas, so none of this reaches the chain from
+              your wallet. Its fee comes out of the notes being merged, one per round.
+            </p>
+          )}
 
           <div className="bg-ink2 px-4 py-3 flex items-center justify-between text-xs">
             <span className="text-faint font-data">Rounds</span>
@@ -770,7 +776,9 @@ function MergeProgressModal({
             <p className="flex items-center gap-2 text-[0.7rem] text-muted leading-relaxed">
               <Spinner className="h-3 w-3" />
               {progress?.step === "confirm"
-                ? "Confirm in your wallet"
+                ? progress.relayed
+                  ? "The relayer is submitting"
+                  : "Confirm in your wallet"
                 : progress?.step === "prove"
                   ? "Proving in your browser"
                   : progress?.step === "mined" || progress?.step === "record"

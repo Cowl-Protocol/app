@@ -172,15 +172,17 @@ function planInputs(inputs: StoredNote[]): SpendPlan["inputs"] {
  * proof; self-submitted spends carry both as zero.
  */
 /**
- * Merge the two smallest notes of `token` into one, back to yourself.
+ * Merge the two largest notes of `token` into one, back to yourself.
  *
  * A join-split reads two notes at most, so a balance scattered across many
  * small ones can hold far more than any single spend can move. Each round
  * turns two notes into one, which means n notes settle in n minus two rounds
  * and the ceiling climbs every time.
  *
- * Nothing about it is special on chain: two nullifiers, two commitments, no
- * public value, exactly like a payment to yourself.
+ * On chain it is two nullifiers and two commitments, exactly like a payment to
+ * yourself. Relayed, it also carries `fee` for `relayer`, which is value leaving
+ * the pool — so the merged note comes out that much smaller and the asset is
+ * named, the same trade a relayed send makes. See planSend.
  */
 export function planConsolidate(
   pool: Pool,
@@ -188,6 +190,8 @@ export function planConsolidate(
   keys: ShieldedKeys,
   token: bigint,
   chainId: bigint,
+  fee: bigint = 0n,
+  relayer: bigint = 0n,
 ): PlannedSpend {
   const avail = wallet.notes
     .filter((n) => !n.spent && hexToField(n.token) === token && hexToField(n.value) > 0n)
@@ -205,7 +209,12 @@ export function planConsolidate(
   // time, and the same book gets there in three.
   const [a, b] = [avail[0]!, avail[1]!];
   const total = hexToField(a.value) + hexToField(b.value);
-  const out0: Note = { value: total, token, mpk: keys.mpk, blinding: randomField() };
+  // A relayer paid more than the two notes hold would need a third input the
+  // circuit does not have. Caught here rather than as an unsatisfiable witness.
+  if (total <= fee) {
+    throw new Error("These notes cannot cover the relayer's fee. Merge them yourself, or shield more.");
+  }
+  const out0: Note = { value: total - fee, token, mpk: keys.mpk, blinding: randomField() };
   const out1: Note = { value: 0n, token, mpk: keys.mpk, blinding: randomField() };
   return {
     plan: {
@@ -215,13 +224,13 @@ export function planConsolidate(
       inputs: planInputs([a, b]),
       outputs: [outParts(out0), outParts(out1)],
       leaves: pool.commitments.map(hexToField),
-      // A merge never has a public leg, so this field is free — and naming the
-      // asset here would say which token a book is fragmented in.
-      publicToken: 0n,
+      // Free while nothing leaves — naming the asset would say which token a
+      // book is fragmented in. A fee is something leaving, and pins it.
+      publicToken: fee === 0n ? 0n : token,
       publicValue: 0n,
-      fee: 0n,
+      fee,
       recipient: 0n,
-      relayer: 0n,
+      relayer,
       chainId,
     },
     outputs: [
@@ -235,11 +244,25 @@ export function planConsolidate(
 /**
  * How many merges it takes before one spend can move `target` of `token`.
  *
- * Each round retires the two smallest notes and mints their sum, so the two
- * largest grow every time. Counted here rather than guessed, because "merge a
- * few times and try again" is not an instruction anyone can follow.
+ * Each round retires the two largest notes and mints their sum, so the ceiling
+ * climbs every time. Counted here rather than guessed, because "merge a few
+ * times and try again" is not an instruction anyone can follow.
+ *
+ * A relayed round pays `fee` out of the pair it is merging, so the note it
+ * mints is that much smaller and the ceiling climbs by less. Left out of this
+ * arithmetic the count reads low, the run stops short, and the send it was
+ * clearing the way for is still capped — having spent gas to get there. Worse,
+ * a round only makes progress when the next note down is bigger than the fee;
+ * below that the loop below still terminates, because the note count falls by
+ * one each round either way, and the shortfall surfaces as -1 rather than as a
+ * run that never ends.
  */
-export function mergesNeeded(wallet: Wallet, token: bigint, target: bigint): number {
+export function mergesNeeded(
+  wallet: Wallet,
+  token: bigint,
+  target: bigint,
+  fee: bigint = 0n,
+): number {
   let values = wallet.notes
     .filter((n) => !n.spent && hexToField(n.token) === token && hexToField(n.value) > 0n)
     .map((n) => hexToField(n.value))
@@ -250,8 +273,9 @@ export function mergesNeeded(wallet: Wallet, token: bigint, target: bigint): num
   // Counted the way planConsolidate merges, or the number on screen is a
   // promise about a run that behaves differently.
   while (top2(values) < target && values.length >= 3) {
-    const merged = values[values.length - 1]! + values[values.length - 2]!;
-    values = [...values.slice(0, values.length - 2), merged].sort((a, b) => (a < b ? -1 : 1));
+    const pair = values[values.length - 1]! + values[values.length - 2]!;
+    if (pair <= fee) break; // the pair cannot even pay for its own merge
+    values = [...values.slice(0, values.length - 2), pair - fee].sort((a, b) => (a < b ? -1 : 1));
     rounds++;
   }
   // Unreachable even after merging everything: the book simply holds less.

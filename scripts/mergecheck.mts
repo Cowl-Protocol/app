@@ -5,6 +5,7 @@
 // one send can move. Merging fixes that, and the screen promises a number of
 // rounds before anyone signs the first. If that count is wrong the run stops
 // short and the send is still capped, having spent gas to get there.
+import { readFileSync } from "node:fs";
 import { mergesNeeded, planConsolidate, emptyPool, emptyWallet, type Wallet } from "../lib/shielded/pool";
 import { fieldToHex } from "../lib/shielded/field";
 
@@ -116,6 +117,129 @@ check(
   rounds < smallestFirst,
   `${rounds} rounds instead of ${smallestFirst}`,
 );
+
+// ---- what a relayer costs a run ---------------------------------------------
+// A relayed round pays its fee out of the pair being merged, so every round
+// mints a note smaller than the two it retired. Left out of the count, the
+// number on screen reads low, the run stops short, and the send it was clearing
+// the way for is still capped — after paying for every round. So the fee has to
+// be in the arithmetic, not just in the plan.
+{
+  const FEE = 5_000n * ONE;
+
+  /** One relayed round, exactly as planConsolidate performs it. */
+  const mergeOncePaid = (w: Wallet, fee: bigint): Wallet => {
+    const live = w.notes
+      .filter((n) => !n.spent)
+      .sort((a, b) => (BigInt(a.value) < BigInt(b.value) ? 1 : -1));
+    const [a, b] = [live[0]!, live[1]!];
+    return bookOf([...live.slice(2).map((n) => BigInt(n.value)), BigInt(a.value) + BigInt(b.value) - fee]);
+  };
+
+  const paidRounds = mergesNeeded(bookOf(denominated), TOKEN, target, FEE);
+  check("a fee is allowed to change the count", paidRounds > 0, `${paidRounds} rounds with a fee`);
+  check(
+    "and it never lowers it",
+    paidRounds >= rounds,
+    `${paidRounds} paid vs ${rounds} free`,
+  );
+
+  let paid = bookOf(denominated);
+  for (let i = 0; i < paidRounds; i++) paid = mergeOncePaid(paid, FEE);
+  check(
+    "after that many paid rounds the amount still fits",
+    sendable(paid) >= target,
+    `${sendable(paid) / ONE} covers ${target / ONE}`,
+  );
+
+  // The failure this whole block exists to prevent: counting as though the
+  // rounds were free and then paying for them.
+  let underCounted = bookOf(denominated);
+  for (let i = 0; i < rounds; i++) underCounted = mergeOncePaid(underCounted, FEE);
+  check(
+    "counting free rounds and paying for them falls short",
+    sendable(underCounted) < target,
+    `${sendable(underCounted) / ONE} short of ${target / ONE} — which is why the fee is in the count`,
+  );
+
+  // Value is conserved minus exactly what the relayer was paid, never more.
+  const spent = paid.notes.filter((n) => !n.spent).reduce((s, n) => s + BigInt(n.value), 0n);
+  check(
+    "a paid run loses exactly the fees and nothing else",
+    spent === before - FEE * BigInt(paidRounds),
+    `${(before - spent) / ONE} paid over ${paidRounds} rounds`,
+  );
+
+  // A fee big enough to swallow the pair makes merging pointless rather than
+  // endless: the count says so instead of looping.
+  check(
+    "a fee larger than the book is refused, not looped",
+    mergesNeeded(bookOf(denominated), TOKEN, target, 10_000_000n * ONE) === -1,
+  );
+
+  // And the plan refuses the same case rather than building an impossible witness.
+  check(
+    "a round that cannot cover its own fee is refused",
+    (() => {
+      try {
+        planConsolidate(
+          emptyPool(),
+          bookOf([1n * ONE, 2n * ONE, 3n * ONE]),
+          { mpk: 1n, viewPubHex: "00" } as never,
+          TOKEN,
+          1n,
+          100n * ONE,
+          1n,
+        );
+        return false;
+      } catch {
+        return true;
+      }
+    })(),
+  );
+
+  // A free merge names no asset; a paid one has to, because the fee is value
+  // leaving and the circuit pins the field the moment anything does.
+  const free = planConsolidate(emptyPool(), bookOf(denominated), { mpk: 1n, viewPubHex: "00" } as never, TOKEN, 1n);
+  const withFee = planConsolidate(
+    emptyPool(),
+    bookOf(denominated),
+    { mpk: 1n, viewPubHex: "00" } as never,
+    TOKEN,
+    1n,
+    FEE,
+    0xbeefn,
+  );
+  check("a self-paid merge names no asset", free.plan.publicToken === 0n);
+  check("a relayed merge names its asset", withFee.plan.publicToken === TOKEN);
+  check("the fee leaves the merged note smaller", withFee.outputs[0]!.note.value === free.outputs[0]!.note.value - FEE);
+}
+
+// ---- the wiring, read from the source ---------------------------------------
+// planConsolidate accepting a fee proves nothing about anything passing one.
+{
+  const provider = readFileSync(new URL("../components/ShieldedProvider.tsx", import.meta.url), "utf8");
+  const exec = provider.slice(provider.indexOf("const consolidateExec"), provider.indexOf("const value = useMemo"));
+  check("consolidateExec is in the file", exec.length > 0);
+  check("a merge run asks for a quote", /tryQuote\(/.test(exec));
+  check("the fee reaches the round count", /mergesNeeded\([^)]*quote0\?\.fee|mergesNeeded\([\s\S]{0,120}?quote\?\.fee/.test(exec));
+  check("the fee reaches the plan", /planConsolidate\([\s\S]{0,200}?quote\?\.fee/.test(exec));
+  check("rounds go out through the relayer", /relaySpend\(/.test(exec));
+  check("and fall back to the wallet without a quote", /submitSpend\(/.test(exec));
+  check("it dry-runs as whoever submits", /simulateSpend\(\s*quote \? quote\.relayer/.test(exec));
+  check("the screen is told who pays", /prog\.relayed/.test(exec));
+  // A fee that climbs mid-run buys less ceiling per round than was counted on,
+  // so a fixed round count can stop short. The loop re-asks the book instead,
+  // and the cap is what keeps that from running forever.
+  check("the run re-checks the book rather than trusting the estimate", /break merging/.test(exec));
+  check("and is capped so a climbing fee cannot loop forever", /MAX_EXTRA_ROUNDS/.test(exec));
+
+  const card = readFileSync(new URL("../components/SendCard.tsx", import.meta.url), "utf8");
+  // "Nothing leaves your balance" stopped being true the moment a relayer was
+  // paid out of the notes being merged.
+  check("the merge panel no longer claims nothing leaves", !/Nothing\s+leaves your balance/.test(card));
+  check("and it no longer says the two smallest", !/two smallest/.test(card));
+}
 
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

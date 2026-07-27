@@ -591,12 +591,21 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   /**
    * Pay a zcowl address out of the shielded book.
    *
-   * The same join-split the boundary uses, with its public leg set to zero:
-   * nothing leaves the pool, so the chain sees two spent nullifiers and two
-   * fresh commitments and no amount, no asset and no parties. What separates a
-   * payment from change is only who each output is encrypted to — the
-   * recipient reads the first with their view key, you read the second with
-   * yours, and neither ciphertext tells the other apart from outside.
+   * The same join-split the boundary uses, with no payout leg: the chain sees
+   * two spent nullifiers and two fresh commitments, and neither the amount nor
+   * either party. What separates a payment from change is only who each output
+   * is encrypted to — the recipient reads the first with their view key, you
+   * read the second with yours, and neither ciphertext tells the other apart
+   * from outside.
+   *
+   * Gasless by default, and the trade that comes with it is deliberate. A
+   * relayer's fee is paid out of these same notes, which is value leaving, and
+   * the circuit pins the public token field to the real asset the moment
+   * anything does. So a relayed payment names its asset; a self-paid one need
+   * not. It is the better default anyway: the asset is largely inferable from
+   * the sender's own public deposits, whereas relaying is the only thing that
+   * keeps their wallet off the chain entirely — and on a payment, hiding the
+   * sender is the point.
    *
    * One note in, one transaction, no denomination split: a private transfer
    * publishes no amount to round off.
@@ -608,6 +617,10 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       // Malformed addresses die here, before a signature is asked for.
       const recipient = decodePaymentAddress(to);
 
+      // Re-asked per attempt, as at the boundary: a relayer can go down between
+      // a replan and the next, and the screen has to stop claiming gasless the
+      // moment the wallet starts paying.
+      let relayed = false;
       const prog: OpProgress = {
         op: "send",
         symbol,
@@ -632,6 +645,24 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
           applyScan(sync.pool, wallet, k);
           saveWallet(net.key, k, wallet);
 
+          // Gasless is the default here too, and it is worth more on a payment
+          // than at the boundary: relayed, the sender's wallet never appears on
+          // chain at all. A relayer that is down, serving another chain, or
+          // unable to price this asset yields null, and the send falls back to
+          // the wallet rather than failing — that fallback is also the more
+          // private shape for the asset, since a spend paying no fee need not
+          // name it. See planSend.
+          const quote = await tryQuote(
+            net.defaultRelay,
+            net.chainId,
+            net.contracts.pool!,
+            tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`),
+          );
+          if (relayed !== !!quote) {
+            relayed = !!quote;
+            prog.relayed = relayed;
+          }
+
           const planned = planSend(
             sync.pool,
             wallet,
@@ -640,6 +671,8 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             value,
             tokenField,
             BigInt(net.chainId),
+            quote?.fee ?? 0n,
+            quote ? BigInt(quote.relayer) : 0n,
           );
 
           prog.step = "prove";
@@ -653,8 +686,20 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
           prog.step = "confirm";
           publish();
           try {
-            await simulateSpend(wc.account.address, proof.spend, ciphertexts, proof.proof);
-            const receipt = await submitSpend(wc, proof.spend, ciphertexts, proof.proof);
+            // Dry-run as whoever will actually send it, so a stale root or a
+            // spent note rejects here rather than inside a confirmed wallet
+            // transaction.
+            await simulateSpend(
+              quote ? quote.relayer : wc.account.address,
+              proof.spend,
+              ciphertexts,
+              proof.proof,
+            );
+            // Relayed, no wallet confirmation is asked for at all: the proof
+            // binds the relayer and its fee, so it submits or it reverts.
+            const receipt = quote
+              ? await relaySpend(net.defaultRelay!, proof.spend, ciphertexts, proof.proof)
+              : await submitSpend(wc, proof.spend, ciphertexts, proof.proof);
 
             prog.step = "mined";
             prog.txs.push({ hash: receipt.hash, part: 0 });

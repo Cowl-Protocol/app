@@ -14,6 +14,7 @@
 //
 // No RPC and no wallet: the pool here is synthetic, so this runs anywhere and
 // says nothing about the live chain (crosscheck.mts covers that).
+import { readFileSync } from "node:fs";
 import { fieldToHex, hexToField, randomField } from "../lib/shielded/field";
 import { commitment, nullifier, type Note } from "../lib/shielded/note";
 import { encryptNote, tryDecryptNote } from "../lib/shielded/crypto";
@@ -227,6 +228,38 @@ check(
   // meters pooledValue[token], which it cannot do against a zero.
   const exit = planUnshield(p, book, sender, 10n * 10n ** 18n, COWL, 0xbeefn, CHAIN_ID);
   check("a withdrawal always names its asset", exit.plan.publicToken === COWL, `got ${exit.plan.publicToken}`);
+}
+
+// ---- the wiring, read from the source ---------------------------------------
+// The arithmetic above proves planSend does the right thing when handed a fee.
+// It says nothing about whether anything hands it one. That is the part that was
+// missing for a month while the coverage table called send "building", so it is
+// asserted here the way capcheck asserts the cap: against the file itself.
+{
+  const provider = readFileSync(new URL("../components/ShieldedProvider.tsx", import.meta.url), "utf8");
+  const sendExec = provider.slice(provider.indexOf("const sendExec"), provider.indexOf("const consolidateExec"));
+  check("sendExec is actually in the file", sendExec.length > 0);
+  check("a send asks for a quote before it plans", /tryQuote\(/.test(sendExec));
+  check("the quote's fee and relayer reach planSend", /quote\?\.fee/.test(sendExec) && /quote \? BigInt\(quote\.relayer\)/.test(sendExec));
+  check("a quoted send goes out through the relayer", /relaySpend\(/.test(sendExec));
+  check("and falls back to the wallet when there is no quote", /submitSpend\(/.test(sendExec));
+  // Simulating as yourself while the relayer submits would dry-run the wrong
+  // account and pass a spend that then reverts on chain, at the relayer's cost.
+  check("it dry-runs as whoever will submit", /simulateSpend\(\s*quote \? quote\.relayer/.test(sendExec));
+  check("the screen is told who is paying", /prog\.relayed/.test(sendExec));
+
+  const card = readFileSync(new URL("../components/SendCard.tsx", import.meta.url), "utf8");
+  check("the card asks the same question before anything signs", /useRelayQuote\(/.test(card));
+  // The fee is drawn from the same notes, so a balance check against the bare
+  // amount would wave through a send that cannot pay for its own delivery.
+  check("the balance check covers the fee", /const drawn = value \+ relayFee/.test(card));
+  check("and so does the sendable check", /overSendable = !overBalance && drawn > sendable/.test(card));
+  check("MAX leaves room for the fee", /balance > relayFee \? balance - relayFee : 0n/.test(card));
+  check("merging targets the full draw", /target: drawn/.test(card));
+  // The old copy promised the asset stayed hidden. Gasless is the default now,
+  // and a relayed send names it — so that promise had to go rather than be
+  // quietly broken.
+  check("the card no longer claims the asset is hidden", !/not the asset/i.test(card));
 }
 
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);

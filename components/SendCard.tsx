@@ -17,6 +17,7 @@ import { formatUnits, parseUnits } from "viem";
 import { decodePaymentAddress, isPaymentAddress } from "@/lib/shielded/keys";
 import { formatBalanceShort, formatUnitsExact, usdOf } from "@/lib/prices";
 import { useTokenPrice } from "@/lib/tokenPrice";
+import { useRelayQuote } from "@/lib/relay";
 import { BETA_USD_CAP, overBetaCap } from "@/lib/betaLimits";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
@@ -135,6 +136,29 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   const balance = token ? shielded.balanceOf(token.field) : 0n;
   const sendable = token ? shielded.sendableOf(token.field) : 0n;
 
+  // Who pays the gas, asked before anything is signed rather than discovered
+  // afterwards. The relayer's fee is drawn from these same notes, so it is part
+  // of what the balance has to cover — and the screen has to say so while
+  // someone can still change the amount.
+  const { quote: relay, checking: relayChecking } = useRelayQuote(
+    token ? token.field : null,
+    tab === "send",
+  );
+  const relayFee = relay?.fee ?? 0n;
+  const gasless = !!relay;
+  // What actually leaves the book: the payment plus that fee.
+  const drawn = value + relayFee;
+
+  /**
+   * The fee buys one spend's gas whatever the payment is worth, so its share
+   * shrinks as the amount grows. Worth naming, because in token terms a cheap
+   * asset makes an ordinary fee look enormous — a fee of about a dollar reads
+   * as thousands of COWL, and only the share says which of those it is.
+   */
+  const feeSharePct =
+    relayFee > 0n && value > 0n ? Number((relayFee * 1000n) / value) / 10 : 0;
+  const feeIsSteep = gasless && feeSharePct >= 10;
+
   const trimmedTo = to.trim();
   const validTo = isPaymentAddress(trimmedTo);
   // A self-payment by keys, not by string: the legacy hex form of your own
@@ -147,10 +171,13 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
       return false;
     }
   }, [validTo, trimmedTo, shielded.paymentAddress]);
-  const overBalance = value > balance;
+  // Measured against what the spend really draws, fee included: a payment of
+  // the whole balance cannot also pay a relayer out of it, and finding that out
+  // at proving time would be finding it out too late.
+  const overBalance = drawn > balance;
   // A join-split reads two notes at most, so a book can hold more than one
   // transfer can carry. Say which number applies rather than failing at proving.
-  const overSendable = !overBalance && value > sendable;
+  const overSendable = !overBalance && drawn > sendable;
 
   // The dollar figure the cap is measured in, and the one the confirm panel
   // shows.
@@ -218,7 +245,9 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
     shielded.clearProgress();
     setMerging(true);
     shielded
-      .consolidateExec({ tokenField: token.field, symbol: token.symbol, decimals, target: value })
+      // The fee rides in the same spend, so the merge has to reach far enough
+      // to cover it too, not just the payment.
+      .consolidateExec({ tokenField: token.field, symbol: token.symbol, decimals, target: drawn })
       .catch(() => {});
   };
 
@@ -267,7 +296,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
           <span className="flex items-center gap-2">
             <InfoTip
               align="right"
-              text="A payment between shielded accounts never becomes public. The chain logs that a spend happened. Not the asset, not the amount, not either end."
+              text="A payment between shielded accounts never becomes public. The chain logs that a spend happened. Not the amount, not either end."
             />
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">
               Fully private
@@ -307,7 +336,14 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                           //
                           // The field parses what it is given, so this writes a
                           // plain decimal, never the grouped display form.
-                          onClick={() => setAmount(formatUnits(balance, decimals))}
+                          //
+                          // Less the relayer's fee, which comes out of these
+                          // same notes: a MAX that spent the balance exactly
+                          // would leave nothing to pay for its own delivery and
+                          // land straight on "insufficient".
+                          onClick={() =>
+                            setAmount(formatUnits(balance > relayFee ? balance - relayFee : 0n, decimals))
+                          }
                           className="text-acid hover:text-acid2 font-data text-[0.65rem]"
                         >
                           MAX
@@ -395,8 +431,36 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                 <Row k="On chain" v="two nullifiers, two commitments" />
                 <Row k="Amount" v="never becomes public" accent />
                 <Row k="Proving" v="In your browser" accent />
-                <Row k="Wallet confirmations" v="1" />
-                <Row k="Gas payer" v="You" />
+                <Row
+                  k="Wallet confirmations"
+                  v={relayChecking ? "…" : gasless ? "0" : "1"}
+                  accent={gasless}
+                />
+                <Row
+                  k="Gas payer"
+                  v={relayChecking ? "…" : gasless ? "The relayer" : "You"}
+                  accent={gasless}
+                />
+                {gasless && token && (
+                  <>
+                    <Row k="Relayer fee" v={`${formatBalanceShort(relayFee, decimals)} ${token.symbol}`} />
+                    <Row
+                      k="Drawn from your balance"
+                      v={`${formatBalanceShort(drawn, decimals)} ${token.symbol}`}
+                      accent
+                    />
+                    {/* Not a blocker. The payment is perfectly valid, it is just
+                        a bad trade at this size, and only the person making it
+                        can decide whether that matters. */}
+                    {feeIsSteep && (
+                      <p className="text-[0.7rem] text-warn leading-relaxed pt-1">
+                        That fee is {feeSharePct.toFixed(0)}% of what you are sending. It costs one
+                        spend&apos;s gas whatever the size, so a larger payment pays the same fee and
+                        a smaller share of it.
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
@@ -483,6 +547,9 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
           usd={usd}
           to={trimmedTo}
           toSelf={toSelf}
+          gasless={gasless}
+          relayFee={gasless ? `${formatBalanceShort(relayFee, decimals)} ${token.symbol}` : undefined}
+          drawn={gasless ? `${formatBalanceShort(drawn, decimals)} ${token.symbol}` : undefined}
           progress={shielded.progress}
           onExecute={execute}
           onClose={closeConfirm}

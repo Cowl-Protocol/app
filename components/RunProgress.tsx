@@ -23,6 +23,18 @@ const STEP_LABEL: Record<OpStep, string> = {
   record: "filing your note",
 };
 
+/**
+ * The submit step reads differently depending on who is carrying it. Relayed,
+ * no wallet ever opens — telling someone to confirm in theirs would leave them
+ * waiting on a prompt that is never coming, which is the one thing a progress
+ * row must not do. The run republishes `relayed` per part, so this follows a
+ * relayer that drops out mid-run.
+ */
+function stepLabel(progress: OpProgress): string {
+  if (progress.step === "confirm" && progress.relayed) return "the relayer is submitting";
+  return STEP_LABEL[progress.step];
+}
+
 export default function RunProgress({ progress }: { progress: OpProgress }) {
   const [, tick] = useState(0);
 
@@ -82,7 +94,7 @@ export default function RunProgress({ progress }: { progress: OpProgress }) {
                   <Spinner className="h-3 w-3 mr-2 align-middle text-acid" />
                   {progress.step === "wait" && progress.waitUntil
                     ? `firing in ${formatRemaining(progress.waitUntil - Date.now())}`
-                    : STEP_LABEL[progress.step]}
+                    : stepLabel(progress)}
                 </span>
               ) : (
                 <span className="font-data text-xs text-faint">waiting</span>

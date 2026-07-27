@@ -19,14 +19,25 @@ type Props = {
   to: string;
   /** True when the recipient is this account — a note moved to itself. */
   toSelf: boolean;
+  /** A relayer is carrying this payment, so no wallet confirmation comes. */
+  gasless?: boolean;
+  /** Its fee, already formatted with the symbol. */
+  relayFee?: string;
+  /** What leaves the shielded book in total: the payment plus that fee. */
+  drawn?: string;
   progress: OpProgress | null;
   onExecute: () => void;
   onClose: () => void;
 };
 
-const STEPS = [
+const STEPS = (gasless: boolean) => [
   { k: "Prove", d: "Your browser spends your notes inside the circuit and mints two fresh ones" },
-  { k: "Submit", d: "The proof goes on chain and is checked there. Your old notes retire, fresh ones take their place" },
+  {
+    k: "Submit",
+    d: gasless
+      ? "The relayer puts the proof on chain and pays for it. Your old notes retire, fresh ones take their place"
+      : "The proof goes on chain and is checked there. Your old notes retire, fresh ones take their place",
+  },
   { k: "Arrive", d: "Their view key opens their note and nothing else does. Change comes back to you" },
 ];
 
@@ -38,6 +49,9 @@ export default function SendConfirmModal({
   usd,
   to,
   toSelf,
+  gasless = false,
+  relayFee,
+  drawn,
   progress,
   onExecute,
   onClose,
@@ -143,7 +157,7 @@ export default function SendConfirmModal({
         ) : (
           /* ---- review ---- */
           <div className="px-5 py-5 space-y-4">
-            {STEPS.map((s, i) => (
+            {STEPS(gasless).map((s, i) => (
               <div key={s.k} className="flex gap-3">
                 <span className="shrink-0 h-6 w-6 flex items-center justify-center bg-ink3 text-acid label-mono text-[0.62rem]">
                   {i + 1}
@@ -165,13 +179,36 @@ export default function SendConfirmModal({
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-faint font-data">Wallet confirmations</span>
-              <span className="font-data text-muted text-right">1</span>
+              <span className={`font-data text-right ${gasless ? "text-acid" : "text-muted"}`}>
+                {gasless ? "0" : "1"}
+              </span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-faint font-data">Gas payer</span>
-              <span className="font-data text-muted text-right">You</span>
+              <span className={`font-data text-right ${gasless ? "text-acid" : "text-muted"}`}>
+                {gasless ? "The relayer" : "You"}
+              </span>
             </div>
+            {gasless && relayFee && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-faint font-data">Relayer fee</span>
+                <span className="font-data text-muted text-right">{relayFee}</span>
+              </div>
+            )}
+            {gasless && drawn && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-faint font-data">Drawn from your balance</span>
+                <span className="font-data text-acid text-right">{drawn}</span>
+              </div>
+            )}
 
+            {gasless && (
+              <p className="text-[0.7rem] text-faint leading-relaxed">
+                The relayer submits and pays the gas, so the chain records it and not your wallet.
+                Its fee is bound into the proof before anything moves, and it comes out of the notes
+                you are spending rather than the payment — the recipient is paid in full.
+              </p>
+            )}
             <p className="text-[0.7rem] text-faint leading-relaxed">
               A payment is final the moment it lands. Check the address before you send: only its
               owner can spend what arrives there.

@@ -21,7 +21,7 @@
  * Receiving needs no ceiling of its own. A payment can only arrive if someone
  * sent it, and the send is where the check already happened.
  */
-export const BETA_USD_CAP = 500;
+export const BETA_USD_CAP = 200;
 
 /**
  * Whether an amount is worth more than the cap allows.

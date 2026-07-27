@@ -22,23 +22,47 @@ console.log(`\nBeta cap: $${BETA_USD_CAP}\n`);
 
 // ---- the cap does its job ---------------------------------------------------
 
-check("well under the cap passes", overBetaCap(1, 100) === false, "1 × $100 = $100");
-check("just under the cap passes", overBetaCap(499, 1) === false, "499 × $1 = $499");
-check("exactly at the cap passes", overBetaCap(500, 1) === false, "500 × $1 = $500");
-check("a cent over the cap blocks", overBetaCap(500.01, 1) === true, "$500.01");
+// Derived from the cap, not written as dollars: the first version hardcoded
+// the launch-day $500 and turned red the day the cap moved to $200, which is
+// the assertion pinning the number instead of the property. The property is
+// that the boundary sits exactly at BETA_USD_CAP, wherever that is.
+check(
+  "well under the cap passes",
+  overBetaCap(1, BETA_USD_CAP / 2) === false,
+  `1 × $${BETA_USD_CAP / 2}`,
+);
+check(
+  "just under the cap passes",
+  overBetaCap(BETA_USD_CAP - 1, 1) === false,
+  `${BETA_USD_CAP - 1} × $1`,
+);
+check(
+  "exactly at the cap passes",
+  overBetaCap(BETA_USD_CAP, 1) === false,
+  `${BETA_USD_CAP} × $1`,
+);
+check(
+  "a cent over the cap blocks",
+  overBetaCap(BETA_USD_CAP + 0.01, 1) === true,
+  `$${(BETA_USD_CAP + 0.01).toFixed(2)}`,
+);
 check("far over the cap blocks", overBetaCap(1000, 100) === true, "$100,000");
 
 // A cheap token in huge quantity is the case a naive token-denominated cap
-// would miss entirely, and the case a dollar cap exists to catch.
+// would miss entirely, and the case a dollar cap exists to catch. The passing
+// case sits clearly under the cap rather than exactly at it, because a product
+// of five million times a tiny float lands near the line with rounding noise,
+// and this check is about counts, not about the boundary — the boundary has
+// its own checks above.
 check(
   "a cheap token in size blocks on dollars, not on count",
-  overBetaCap(5_000_000, 0.0004) === true,
-  "5,000,000 × $0.0004 = $2,000",
+  overBetaCap(5_000_000, (BETA_USD_CAP * 10) / 5_000_000) === true,
+  `5,000,000 × $${(BETA_USD_CAP * 10) / 5_000_000} = $${BETA_USD_CAP * 10}`,
 );
 check(
   "the same count of a cheaper token passes",
-  overBetaCap(5_000_000, 0.00004) === false,
-  "5,000,000 × $0.00004 = $200",
+  overBetaCap(5_000_000, BETA_USD_CAP / 2 / 5_000_000) === false,
+  `5,000,000 × $${BETA_USD_CAP / 2 / 5_000_000} = $${BETA_USD_CAP / 2}`,
 );
 
 // ---- the cap stands aside ---------------------------------------------------

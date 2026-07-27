@@ -17,7 +17,8 @@ import { formatUnits, parseUnits } from "viem";
 import { decodePaymentAddress, isPaymentAddress } from "@/lib/shielded/keys";
 import { formatBalanceShort, formatUnitsExact, usdOf } from "@/lib/prices";
 import { useTokenPrice } from "@/lib/tokenPrice";
-import { useRelayQuote } from "@/lib/relay";
+import { useRelayQuote, useSelfGasEstimate } from "@/lib/relay";
+import { activeNetwork } from "@/lib/networks";
 import { BETA_USD_CAP, overBetaCap } from "@/lib/betaLimits";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
@@ -33,6 +34,8 @@ import Spinner from "./Spinner";
 
 type WalletState = ReturnType<typeof useWallet>;
 export type Tab = "send" | "receive";
+
+const net = activeNetwork();
 
 const TABS: { key: Tab; label: string; href: string }[] = [
   { key: "send", label: "Send", href: "/send" },
@@ -144,10 +147,18 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
     token ? token.field : null,
     tab === "send",
   );
-  const relayFee = relay?.fee ?? 0n;
-  const gasless = !!relay;
+  /**
+   * The relayer is the default, not the only door. Self-paid submits from the
+   * wallet — the CLI's --self — and zeroes the fee the notes must cover, which
+   * for a balance below one fee is the difference between moving and not.
+   */
+  const [selfPay, setSelfPay] = useState(false);
+  const gasless = !!relay && !selfPay;
+  const relayFee = gasless && relay ? relay.fee : 0n;
   // What actually leaves the book: the payment plus that fee.
   const drawn = value + relayFee;
+  // The other half of the choice, priced so "Gas payer: You" has a number too.
+  const selfGas = useSelfGasEstimate(1, tab === "send" && !gasless && value > 0n);
 
   /**
    * The largest payment this book can actually deliver.
@@ -206,6 +217,17 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   // transfer can carry. Say which number applies rather than failing at proving.
   const overSendable = !overBalance && !overReach && drawn > sendable;
 
+  /**
+   * Blocked by the fee, not by the payment.
+   *
+   * A relayer's fee comes out of these same notes, so a balance can cover the
+   * amount typed and still refuse to move — the exact position every small
+   * balance is in. Paying the gas from the wallet zeroes that fee, and the
+   * offer to switch belongs on the screen that just said no.
+   */
+  const feeTrapped =
+    !!relay && !selfPay && value > 0n && value <= balance && (overBalance || overReach);
+
   // The dollar figure the cap is measured in, and the one the confirm panel
   // shows.
   //
@@ -236,7 +258,11 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   // Below the balance checks on purpose: when both apply, the balance is the
   // one someone can act on, so it takes the button.
   if (overCap) label = `Beta caps a send at $${BETA_USD_CAP}`;
-  if (overBalance && token) label = `Insufficient shielded ${token.symbol}`;
+  if (overBalance && token) {
+    label = feeTrapped
+      ? "Not enough for the amount plus the relayer fee"
+      : `Insufficient shielded ${token.symbol}`;
+  }
   if (overReach && token) {
     label = `Fees to gather it cap this at ${formatBalanceShort(maxSendable, decimals)} ${token.symbol}`;
   }
@@ -277,7 +303,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
     shielded
       // The payment, not the draw: the run quotes the fee itself, per round, so
       // it merges against today's price rather than whatever this card last read.
-      .consolidateExec({ tokenField: token.field, symbol: token.symbol, decimals, target: value })
+      .consolidateExec({ tokenField: token.field, symbol: token.symbol, decimals, target: value, selfPay })
       .catch(() => {});
   };
 
@@ -285,7 +311,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
     if (!token) return;
     shielded.clearProgress();
     shielded
-      .sendExec({ to: trimmedTo, value, tokenField: token.field, symbol: token.symbol, decimals })
+      .sendExec({ to: trimmedTo, value, tokenField: token.field, symbol: token.symbol, decimals, selfPay })
       .catch(() => {});
   };
 
@@ -462,11 +488,56 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   v={relayChecking ? "…" : gasless ? "0" : "1"}
                   accent={gasless}
                 />
-                <Row
-                  k="Gas payer"
-                  v={relayChecking ? "…" : gasless ? "The relayer" : "You"}
-                  accent={gasless}
-                />
+                {/* A choice, not a verdict, whenever a relayer is standing by.
+                    Relayed keeps this wallet off the chain entirely; self-paid
+                    zeroes the fee the notes must cover. Both are real, so both
+                    are offered — the same pair the CLI spells with --self. */}
+                <div className="flex items-center justify-between text-xs gap-4">
+                  <span className="flex items-center gap-1.5 text-faint font-data shrink-0">
+                    Gas payer
+                    {relay && !relayChecking && (
+                      <InfoTip text="The relayer submits the spend, so your wallet never appears on chain, and its fee comes out of the notes you are spending. Pay the gas yourself and no fee leaves the notes — your wallet submits instead, and shows as the caller." />
+                    )}
+                  </span>
+                  {relayChecking ? (
+                    <span className="font-data text-muted text-right">…</span>
+                  ) : relay ? (
+                    <div className="flex gap-1">
+                      {[false, true].map((self) => (
+                        <button
+                          key={String(self)}
+                          onClick={() => setSelfPay(self)}
+                          className={`px-2.5 py-1 text-xs font-data transition-colors ${
+                            selfPay === self
+                              ? "bg-acid text-ink"
+                              : "bg-ink2 text-muted hover:text-bone"
+                          }`}
+                        >
+                          {self ? "You" : "The relayer"}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="font-data text-muted text-right">You</span>
+                  )}
+                </div>
+                {!gasless && (
+                  <Row
+                    k="Network fee"
+                    v={
+                      selfGas === null
+                        ? "estimating"
+                        : `~${formatBalanceShort(selfGas, 18)} ${net.currency.symbol}`
+                    }
+                  />
+                )}
+                {!gasless && !relayChecking && (
+                  <p className="text-[0.7rem] text-faint leading-relaxed pt-1">
+                    Your wallet submits this spend and pays its gas, so it shows on chain as the
+                    caller. Nothing is drawn from your notes but the payment itself, and the amount
+                    and the recipient stay hidden either way.
+                  </p>
+                )}
                 {gasless && token && (
                   <>
                     <Row k="Relayer fee" v={`${formatBalanceShort(relayFee, decimals)} ${token.symbol}`} />
@@ -487,6 +558,25 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                     )}
                   </>
                 )}
+              </div>
+            )}
+
+            {/* The way past the fee, on the screen that named it. A balance the
+                fee has trapped is exactly the balance the switch was built for,
+                so the button that says "not enough" gets a neighbour that fixes
+                it rather than a dead end. */}
+            {feeTrapped && (
+              <div className="mt-3 px-3 py-2 bg-ink3 fade-up">
+                <p className="text-[0.7rem] text-faint leading-relaxed">
+                  It is the relayer&apos;s fee this balance cannot cover — the payment itself fits.
+                  Pay the gas from your wallet and nothing is drawn from the notes but the payment.
+                </p>
+                <button
+                  onClick={() => setSelfPay(true)}
+                  className="mt-1.5 label-mono text-[0.68rem] text-acid hover:text-acid2 transition-colors"
+                >
+                  Pay gas yourself →
+                </button>
               </div>
             )}
 
@@ -576,6 +666,11 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
           gasless={gasless}
           relayFee={gasless ? `${formatBalanceShort(relayFee, decimals)} ${token.symbol}` : undefined}
           drawn={gasless ? `${formatBalanceShort(drawn, decimals)} ${token.symbol}` : undefined}
+          networkFee={
+            !gasless && selfGas !== null
+              ? `~${formatBalanceShort(selfGas, 18)} ${net.currency.symbol}`
+              : undefined
+          }
           progress={shielded.progress}
           onExecute={execute}
           onClose={closeConfirm}
@@ -784,12 +879,18 @@ function MergeProgressModal({
             Each round combines your two largest {symbol} notes into one, back to yourself, lifting
             what a single payment can carry.
           </p>
-          {progress?.relayed && (
-            <p className="text-[0.7rem] text-faint leading-relaxed">
-              The relayer submits each round and pays the gas, so none of this reaches the chain from
-              your wallet. Its fee comes out of the notes being merged, one per round.
-            </p>
-          )}
+          {progress &&
+            (progress.relayed ? (
+              <p className="text-[0.7rem] text-faint leading-relaxed">
+                The relayer submits each round and pays the gas, so none of this reaches the chain
+                from your wallet. Its fee comes out of the notes being merged, one per round.
+              </p>
+            ) : (
+              <p className="text-[0.7rem] text-faint leading-relaxed">
+                Your wallet submits each round and pays its gas — expect one confirmation per round.
+                No fee leaves the notes being merged.
+              </p>
+            ))}
 
           <div className="bg-ink2 px-4 py-3 flex items-center justify-between text-xs">
             <span className="text-faint font-data">Rounds</span>

@@ -203,11 +203,12 @@ export function useRelayQuote(
 /**
  * What one spend costs in gas, before anyone decides who pays it.
  *
- * The same figure the relayer prices against, so the two sides of the choice
- * are quoted from one number: pay it yourself in the native coin, or hand it to
- * a relayer who charges it back in the token you are moving.
+ * The same figure the relayer prices against — the CLI daemon's own constant,
+ * sitting just above the highest gas any mainnet spend has burned — so the two
+ * sides of the choice are quoted from one number: pay it yourself in the native
+ * coin, or hand it to a relayer who charges it back in the token you are moving.
  */
-export const GAS_PER_SPEND = 5_000_000n;
+export const GAS_PER_SPEND = 4_450_000n;
 
 /**
  * The native-coin cost of a run you submit yourself.

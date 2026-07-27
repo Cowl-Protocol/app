@@ -25,6 +25,8 @@ type Props = {
   relayFee?: string;
   /** What leaves the shielded book in total: the payment plus that fee. */
   drawn?: string;
+  /** Self-paid: the estimated gas the wallet is about to pay, formatted. */
+  networkFee?: string;
   progress: OpProgress | null;
   onExecute: () => void;
   onClose: () => void;
@@ -52,6 +54,7 @@ export default function SendConfirmModal({
   gasless = false,
   relayFee,
   drawn,
+  networkFee,
   progress,
   onExecute,
   onClose,
@@ -201,12 +204,24 @@ export default function SendConfirmModal({
                 <span className="font-data text-acid text-right">{drawn}</span>
               </div>
             )}
+            {!gasless && networkFee && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-faint font-data">Network fee</span>
+                <span className="font-data text-muted text-right">{networkFee}</span>
+              </div>
+            )}
 
-            {gasless && (
+            {gasless ? (
               <p className="text-[0.7rem] text-faint leading-relaxed">
                 The relayer submits and pays the gas, so the chain records it and not your wallet.
                 Its fee is bound into the proof before anything moves, and it comes out of the notes
                 you are spending rather than the payment — the recipient is paid in full.
+              </p>
+            ) : (
+              <p className="text-[0.7rem] text-faint leading-relaxed">
+                Your wallet submits this spend and pays its gas, so the chain records it as the
+                caller. Nothing is drawn from your notes but the payment itself, and the amount and
+                the recipient stay hidden either way.
               </p>
             )}
             <p className="text-[0.7rem] text-faint leading-relaxed">

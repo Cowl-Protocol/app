@@ -117,6 +117,14 @@ type ShieldedContextValue = {
     decimals: number;
     spreadMs?: number | null;
     done?: PartTx[];
+    /**
+     * Skip the relayer and submit from the wallet — the CLI's --self.
+     *
+     * The run never asks for a quote, so no fee is drawn from the notes; the
+     * wallet pays gas and appears on chain as the caller. This is what lets a
+     * balance smaller than one relayer fee move at all.
+     */
+    selfPay?: boolean;
   }) => Promise<void>;
   /**
    * Merge notes until one spend can carry `target`, or as far as it can get.
@@ -138,6 +146,8 @@ type ShieldedContextValue = {
      * merge aimed at yesterday's fee finishes exactly short of today's.
      */
     target: bigint;
+    /** Rounds confirm in the wallet and pay no fee from the notes — see unshieldExec. */
+    selfPay?: boolean;
   }) => Promise<void>;
   sendExec: (args: {
     /** zcowl payment address of the recipient. */
@@ -146,6 +156,8 @@ type ShieldedContextValue = {
     tokenField: bigint;
     symbol: string;
     decimals: number;
+    /** Submit from the wallet, no relayer fee — see unshieldExec. */
+    selfPay?: boolean;
   }) => Promise<void>;
 };
 
@@ -468,7 +480,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   );
 
   const unshieldExec = useCallback<ShieldedContextValue["unshieldExec"]>(
-    async ({ parts, tokenField, symbol, decimals, spreadMs, done = [] }) => {
+    async ({ parts, tokenField, symbol, decimals, spreadMs, done = [], selfPay = false }) => {
       const wc = walletClientRef.current;
       if (!wc?.account) throw new Error("Connect a wallet first.");
       const payout = BigInt(wc.account.address);
@@ -516,12 +528,15 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             // fee it names is bound into the proof. A relayer that is down, or
             // serving another chain, simply yields null and the spend falls
             // back to the wallet — the withdrawal must not go down with it.
-            const quote = await tryQuote(
-              net.defaultRelay,
-              net.chainId,
-              net.contracts.pool!,
-              tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`),
-            );
+            // Self-paid skips the question: no quote, no fee from the notes.
+            const quote = selfPay
+              ? null
+              : await tryQuote(
+                  net.defaultRelay,
+                  net.chainId,
+                  net.contracts.pool!,
+                  tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`),
+                );
             if (relayed !== !!quote) {
               relayed = !!quote;
               prog.relayed = relayed;
@@ -618,7 +633,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
    * publishes no amount to round off.
    */
   const sendExec = useCallback<ShieldedContextValue["sendExec"]>(
-    async ({ to, value, tokenField, symbol, decimals }) => {
+    async ({ to, value, tokenField, symbol, decimals, selfPay = false }) => {
       const wc = walletClientRef.current;
       if (!wc?.account) throw new Error("Connect a wallet first.");
       // Malformed addresses die here, before a signature is asked for.
@@ -658,13 +673,17 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
           // unable to price this asset yields null, and the send falls back to
           // the wallet rather than failing — that fallback is also the more
           // private shape for the asset, since a spend paying no fee need not
-          // name it. See planSend.
-          const quote = await tryQuote(
-            net.defaultRelay,
-            net.chainId,
-            net.contracts.pool!,
-            tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`),
-          );
+          // name it. See planSend. Self-paid takes that branch on purpose: the
+          // fee that would otherwise leave these notes is the whole reason a
+          // small balance cannot move.
+          const quote = selfPay
+            ? null
+            : await tryQuote(
+                net.defaultRelay,
+                net.chainId,
+                net.contracts.pool!,
+                tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`),
+              );
           if (relayed !== !!quote) {
             relayed = !!quote;
             prog.relayed = relayed;
@@ -745,7 +764,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
    * the rounds too is what stops the preparation from identifying the payment.
    */
   const consolidateExec = useCallback<ShieldedContextValue["consolidateExec"]>(
-    async ({ tokenField, symbol, decimals, target }) => {
+    async ({ tokenField, symbol, decimals, target, selfPay = false }) => {
       const wc = walletClientRef.current;
       if (!wc?.account) throw new Error("Connect a wallet first.");
 
@@ -758,7 +777,11 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
       const relayToken =
         tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`);
-      const quote0 = await tryQuote(net.defaultRelay, net.chainId, net.contracts.pool!, relayToken);
+      // Self-paid rounds pay no fee from the notes, so the count is taken at
+      // fee zero and every round buys its full ceiling.
+      const quote0 = selfPay
+        ? null
+        : await tryQuote(net.defaultRelay, net.chainId, net.contracts.pool!, relayToken);
 
       // Each relayed round pays a fee out of the pair it merges, so the count
       // has to be taken against that fee or it reads low and the run stops
@@ -812,7 +835,9 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
             // Re-asked per round: a relayer can go down mid-run, and the fee it
             // charges is what the next round has to be planned against.
-            const quote = await tryQuote(net.defaultRelay, net.chainId, net.contracts.pool!, relayToken);
+            const quote = selfPay
+              ? null
+              : await tryQuote(net.defaultRelay, net.chainId, net.contracts.pool!, relayToken);
             if (relayed !== !!quote) {
               relayed = !!quote;
               prog.relayed = relayed;

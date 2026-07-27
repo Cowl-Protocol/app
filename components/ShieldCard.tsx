@@ -113,7 +113,14 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   // the confirmation count truthfully rather than promising gasless and then
   // opening a wallet.
   const { quote: relay, checking: relayChecking } = useRelayQuote(tokenField, mode === "unshield");
-  const gasless = mode === "unshield" && !!relay;
+  /**
+   * The relayer is the default, not the only door. Self-paid submits each
+   * withdrawal from the wallet — the CLI's --self — and zeroes the fee the
+   * notes must cover, which is what lets a balance smaller than one fee come
+   * back out at all. Withdrawals are never capped; this keeps that true.
+   */
+  const [selfPay, setSelfPay] = useState(false);
+  const gasless = mode === "unshield" && !!relay && !selfPay;
   // The other half of the same question: what it costs when the wallet pays.
   const selfGas = useSelfGasEstimate(execParts.length, !gasless && value > 0n);
 
@@ -190,6 +197,18 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   }
   if (needsUnlockFirst) label = "Unlock to see what you can withdraw";
 
+  // Blocked by the fee, not by the withdrawal: the amount fits the notes and
+  // only the relayer's cut on top does not. Paying gas from the wallet zeroes
+  // that cut, so the screen that says no also offers the switch.
+  const feeTrapped =
+    mode === "unshield" &&
+    !!relay &&
+    !selfPay &&
+    unlocked &&
+    requiredTotal > 0n &&
+    requiredTotal <= shieldedBal &&
+    drawnFromNotes > shieldedBal;
+
   const pick = (t: Token) => {
     setToken(t);
     setAmount("");
@@ -216,6 +235,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
       return next;
     });
     setAmount("");
+    setSelfPay(false);
   };
 
   const unlock = async () => {
@@ -250,7 +270,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     const run =
       mode === "shield"
         ? shielded.shieldExec({ ...args, tokenAddress: token.native ? null : token.address })
-        : shielded.unshieldExec(args);
+        : shielded.unshieldExec({ ...args, selfPay });
     run.then(() => refreshBal()).catch(() => {});
   };
 
@@ -273,11 +293,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           {mode === "unshield" && shieldedBal > 0n && (
             <button
               // MAX has to leave the relayer's fee behind, or it fills the field
-              // with an amount the book can never cover.
+              // with an amount the book can never cover. Self-paid pays no fee
+              // from the notes, so its MAX is the whole balance.
               onClick={() =>
                 setAmount(
                   formatUnits(
-                    maxAfterFee(shieldedBal, relay?.fee ?? 0n, token.decimals, exact),
+                    maxAfterFee(shieldedBal, gasless && relay ? relay.fee : 0n, token.decimals, exact),
                     token.decimals,
                   ),
                 )
@@ -348,6 +369,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                 onClick={() => {
                   setMode(m);
                   setAmount("");
+                  // The choice belongs to the withdrawal it was made for.
+                  setSelfPay(false);
                 }}
                 className={`label-mono text-[0.72rem] transition-colors ${
                   mode === m ? "text-bone border-b border-acid pb-0.5" : "text-faint hover:text-muted"
@@ -544,21 +567,46 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             {/* Until the relayer has answered, who pays is genuinely unknown.
                 Printing "You" and flipping to "The relayer" a moment later is
                 stating a fact nobody has checked, on the row that decides
-                whether a wallet is about to open. */}
-            <Row
-              k="Gas payer"
-              v={
-                relayChecking
-                  ? "checking the relayer"
-                  : gasless
-                    ? "The relayer"
-                    : mode === "shield"
-                      ? "You, per deposit"
-                      : "You, per withdrawal"
-              }
-              accent={gasless}
-              busy={relayChecking}
-            />
+                whether a wallet is about to open. Once it has answered, an
+                unshield gets the choice rather than the verdict: relayed keeps
+                the wallet off this transaction, self-paid keeps the fee out of
+                the notes — the CLI's --self, as two chips. */}
+            {mode === "unshield" && relay && !relayChecking ? (
+              <div className="flex items-center justify-between text-xs gap-4">
+                <span className="flex items-center gap-1.5 text-faint font-data shrink-0">
+                  Gas payer
+                  <InfoTip text="The relayer submits each withdrawal and charges its fee from the notes being spent. Pay the gas yourself and no fee leaves the notes — your wallet submits instead, one confirmation per withdrawal." />
+                </span>
+                <div className="flex gap-1">
+                  {[false, true].map((self) => (
+                    <button
+                      key={String(self)}
+                      onClick={() => setSelfPay(self)}
+                      className={`px-2.5 py-1 text-xs font-data transition-colors ${
+                        selfPay === self ? "bg-acid text-ink" : "bg-ink2 text-muted hover:text-bone"
+                      }`}
+                    >
+                      {self ? "You" : "The relayer"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <Row
+                k="Gas payer"
+                v={
+                  relayChecking
+                    ? "checking the relayer"
+                    : gasless
+                      ? "The relayer"
+                      : mode === "shield"
+                        ? "You, per deposit"
+                        : "You, per withdrawal"
+                }
+                accent={gasless}
+                busy={relayChecking}
+              />
+            )}
             {/* The arithmetic in full, whoever pays. A cost with no number
                 beside it is not a price, and one that only appears after the
                 fact is a number nobody agreed to. */}
@@ -602,6 +650,23 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                 busy={selfGas === null}
               />
             )}
+          </div>
+        )}
+
+        {/* The way past the fee, on the screen that named it: a withdrawal the
+            fee has trapped is exactly what the self-paid switch exists for. */}
+        {feeTrapped && insufficient && (
+          <div className="mt-3 px-3 py-2 bg-ink3 fade-up">
+            <p className="text-[0.7rem] text-faint leading-relaxed">
+              It is the relayer&apos;s fee this balance cannot cover — the withdrawal itself fits.
+              Pay the gas from your wallet and the notes owe nothing on top.
+            </p>
+            <button
+              onClick={() => setSelfPay(true)}
+              className="mt-1.5 label-mono text-[0.68rem] text-acid hover:text-acid2 transition-colors"
+            >
+              Pay gas yourself →
+            </button>
           </div>
         )}
 

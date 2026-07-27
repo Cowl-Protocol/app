@@ -5,8 +5,6 @@
 // worker, confirm in the wallet, wait for the receipt, part by part) and
 // RunProgress renders that live. A spread fires its parts from this tab, so
 // the copy asks for the tab to stay open until the last one lands.
-import { useState } from "react";
-import { activeNetwork } from "@/lib/networks";
 import type { Token } from "@/lib/tokens";
 import type { OpProgress } from "./ShieldedProvider";
 import RunProgress from "./RunProgress";
@@ -20,6 +18,8 @@ type Props = {
   mode: BoundaryMode;
   token: Token;
   amount: string;
+  /** What the amount is worth, or null when the token has no price. */
+  usd?: string | null;
   /** Boundary parts in base units — one transaction each. */
   parts: bigint[];
   /** Grouped denomination plan, e.g. "2 × 0.1 · 3 × 0.01" — omitted when exact. */
@@ -61,6 +61,7 @@ export default function BoundaryConfirmModal({
   mode,
   token,
   amount,
+  usd,
   parts,
   planLabel,
   remainderLabel,
@@ -75,24 +76,9 @@ export default function BoundaryConfirmModal({
   onExecute,
   onClose,
 }: Props) {
-  const [copied, setCopied] = useState(false);
-
   if (!open) return null;
 
-  const net = activeNetwork();
-  const tokenArg = token.native ? "" : ` ${token.address}`;
-  const cliCmd = `cowl ${mode} ${amount}${tokenArg} -n ${net.key}${exact ? " --exact" : ""}${spread ? ` --spread ${spread}` : ""}`;
   const running = !!progress && !progress.done && !progress.error;
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(cliCmd);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* clipboard blocked — the command is visible to copy manually */
-    }
-  };
 
   const title = mode === "shield" ? "Review shield" : "Review unshield";
   const fromLabel = mode === "shield" ? "Public wallet" : "Shielded balance";
@@ -121,8 +107,13 @@ export default function BoundaryConfirmModal({
               <TokenGlyph symbol={token.symbol} src={token.logoURI} />
               <span className="text-faint label-soft whitespace-nowrap">{fromLabel}</span>
             </span>
-            <span className="font-data text-lg text-bone whitespace-nowrap">
-              {amount} {token.symbol}
+            {/* The dollar figure belongs on the last screen before signing, not
+                only on the one where the number was typed. */}
+            <span className="text-right whitespace-nowrap">
+              <span className="font-data text-lg text-bone">
+                {amount} {token.symbol}
+              </span>
+              {usd && <span className="block font-data text-[0.7rem] text-faint">{usd}</span>}
             </span>
           </div>
           <div className="h-px" />
@@ -269,7 +260,7 @@ export default function BoundaryConfirmModal({
                   </div>
                 )}
                 {steepFeePct !== undefined && (
-                  <p className="text-[0.7rem] text-[#ffb84d] leading-relaxed">
+                  <p className="text-[0.7rem] text-warn leading-relaxed">
                     That fee is {steepFeePct.toFixed(0)}% of what you are withdrawing. It costs one
                     spend&apos;s gas whatever the size, so a larger withdrawal pays the same fee and
                     a smaller share of it.
@@ -286,7 +277,7 @@ export default function BoundaryConfirmModal({
             {spread && (
               <p className="text-[0.7rem] text-faint leading-relaxed">
                 The parts fire at random moments across {spread}, so keep this tab open until the
-                last one lands. The terminal can carry a long window instead.
+                last one lands.
               </p>
             )}
             <button
@@ -295,15 +286,6 @@ export default function BoundaryConfirmModal({
             >
               {verb} now
             </button>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[0.7rem] text-faint shrink-0">Prefer the terminal?</span>
-              <span className="flex items-center gap-2 min-w-0">
-                <code className="font-data text-[0.7rem] text-muted truncate">{cliCmd}</code>
-                <button onClick={copy} className="label-soft text-faint hover:text-bone shrink-0">
-                  {copied ? "Copied" : "Copy"}
-                </button>
-              </span>
-            </div>
           </div>
         )}
       </div>

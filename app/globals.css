@@ -16,6 +16,8 @@
   --color-faint: #565b64;
   --color-acid: #d7fb08;
   --color-acid2: #e6ff52;
+  /* The one warm note in a cold palette, so it only ever means "read this". */
+  --color-warn: #ffb84d;
   --color-line: rgba(236, 236, 231, 0.1);
   --color-line2: rgba(236, 236, 231, 0.18);
 }

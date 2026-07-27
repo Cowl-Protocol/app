@@ -9,6 +9,7 @@ import { formatBalance, formatBalanceShort, formatUnitsExact, usdOf } from "@/li
 import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { useRelayQuote, useSelfGasEstimate } from "@/lib/relay";
 import { useTokenPrice } from "@/lib/tokenPrice";
+import { BETA_USD_CAP, overBetaCap } from "@/lib/betaLimits";
 import { parseWindow } from "@/lib/spread";
 import { shortAddr, type useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
@@ -138,7 +139,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
       : 0;
   const feeIsSteep = feeSharePct >= 10;
 
+  // Priced off the venue's own pools, whatever the token is — including one
+  // pasted in a minute ago. No price, no USD line.
+  const price = useTokenPrice(token);
+
   const amt = parseFloat(amount) || 0;
+  const usd = usdOf(amt, price);
   const balUnknown = publicBal === null;
   const bal = parseFloat(publicBal ?? "0") || 0;
   const insufficient =
@@ -148,6 +154,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const belowTier = !exact && value > 0n && parts.length === 0;
   const tooMany = !exact && parts.length > MAX_BOUNDARY_TXS;
   const needsUnlockFirst = mode === "unshield" && !unlocked;
+  // Deposits only. The way out is never capped, whatever the size.
+  const overCap = mode === "shield" && overBetaCap(amt, price);
   const ready =
     !!wallet.address &&
     !wallet.wrongNetwork &&
@@ -155,6 +163,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     !insufficient &&
     !belowTier &&
     !tooMany &&
+    !overCap &&
     !needsUnlockFirst;
 
   let label = "Enter an amount";
@@ -169,6 +178,10 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         ? `Shared tops out at ${fmtUnits(cap, token.decimals)} ${token.symbol} · go Exact`
         : "Round the amount, or go Exact";
   }
+  // Sits above the balance check on purpose: when someone is over the cap and
+  // short of the balance at the same time, the balance is the one they can act
+  // on, so it takes the button.
+  if (overCap) label = `Beta caps a deposit at $${BETA_USD_CAP}`;
   if (insufficient) {
     label =
       gasless && relayFeeTotal > 0n && requiredTotal <= shieldedBal
@@ -204,11 +217,6 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     });
     setAmount("");
   };
-
-  // Priced off the venue's own pools, whatever the token is — including one
-  // pasted in a minute ago. No price, no USD line.
-  const price = useTokenPrice(token);
-  const usd = usdOf(amt, price);
 
   const unlock = async () => {
     setUnlockError(null);
@@ -395,6 +403,23 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             </button>
           </div>
           {usd && <div className="mt-2 text-[0.7rem] text-faint font-data">{usd}</div>}
+          {/* Stated before someone hits it, not after. A ceiling you only meet
+              by bouncing off it reads as a fault; one you can see reads as a
+              decision. The second line is there because the question a limit
+              raises is always whether the way out has one too.
+
+              It keeps its block in both states so nothing shifts under the
+              cursor when the limit is crossed; only the colour moves. */}
+          {mode === "shield" && (
+            <p
+              className={`mt-3 px-3 py-2 text-[0.7rem] leading-relaxed transition-colors ${
+                overCap ? "bg-warn/10 text-warn" : "bg-ink3 text-faint"
+              }`}
+            >
+              Beta caps a deposit at ${BETA_USD_CAP}. Withdrawals are not capped, so whatever you
+              put in comes back out on your say so.
+            </p>
+          )}
         </div>
 
         {/* Flip */}
@@ -557,7 +582,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                     a bad trade at this size, and only the person doing it can
                     decide whether that matters. */}
                 {feeIsSteep && (
-                  <p className="text-[0.7rem] text-[#ffb84d] leading-relaxed pt-1">
+                  <p className="text-[0.7rem] text-warn leading-relaxed pt-1">
                     That fee is {feeSharePct.toFixed(0)}% of what you are withdrawing. It costs one
                     spend&apos;s gas whatever the size, so a larger withdrawal pays the same fee and
                     a smaller share of it.
@@ -680,6 +705,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         mode={mode}
         token={token}
         amount={amount}
+        usd={usd}
         parts={execParts}
         planLabel={!exact && parts.length > 0 ? planLabel : undefined}
         remainderLabel={

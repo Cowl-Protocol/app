@@ -227,14 +227,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
             <Link href="/shield" className="text-muted hover:text-bone transition-colors">
               Shield and unshield
             </Link>{" "}
-            are live today, and{" "}
-            <a
-              href="https://cowlprotocol.com/docs"
-              className="text-muted hover:text-bone transition-colors"
-            >
-              the cowl CLI
-            </a>{" "}
-            trades privately right now.
+            are live today, and trades settle from the same shielded balance when they open.
           </>
         )}
       </p>

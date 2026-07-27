@@ -15,7 +15,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { formatUnits, parseUnits } from "viem";
 import { decodePaymentAddress, isPaymentAddress } from "@/lib/shielded/keys";
-import { formatBalanceShort, formatUnitsExact } from "@/lib/prices";
+import { formatBalanceShort, formatUnitsExact, usdOf } from "@/lib/prices";
+import { useTokenPrice } from "@/lib/tokenPrice";
+import { BETA_USD_CAP, overBetaCap } from "@/lib/betaLimits";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
 import { TOKENS, tokenMetaForField } from "@/lib/tokens";
@@ -150,13 +152,36 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   // transfer can carry. Say which number applies rather than failing at proving.
   const overSendable = !overBalance && value > sendable;
 
-  const ready = unlocked && !!token && value > 0n && validTo && !overBalance && !overSendable;
+  // The dollar figure the cap is measured in, and the one the confirm panel
+  // shows.
+  //
+  // Pricing wants the full token record, which the shielded book does not carry
+  // — it knows a field, a symbol and a decimal count, and nothing else. The
+  // asset list built beside it does carry one, so match on the field and borrow
+  // it rather than rebuilding an address from the field by hand.
+  const priceToken = useMemo(() => {
+    if (!token) return null;
+    return (
+      shieldedAssets.find((a) => (a.token.native ? 0n : BigInt(a.token.address)) === token.field)
+        ?.token ?? null
+    );
+  }, [shieldedAssets, token]);
+  const price = useTokenPrice(priceToken);
+  const amt = parseFloat(amount) || 0;
+  const usd = usdOf(amt, price);
+  const overCap = overBetaCap(amt, price);
+
+  const ready =
+    unlocked && !!token && value > 0n && validTo && !overBalance && !overSendable && !overCap;
 
   let label = "Enter an amount";
   if (unlocked && tokens.length === 0) label = "Shield something first";
   if (value > 0n) label = "Review send";
   if (value > 0n && !trimmedTo) label = "Enter a payment address";
   if (trimmedTo && !validTo) label = "That is not a zcowl address";
+  // Below the balance checks on purpose: when both apply, the balance is the
+  // one someone can act on, so it takes the button.
+  if (overCap) label = `Beta caps a send at $${BETA_USD_CAP}`;
   if (overBalance && token) label = `Insufficient shielded ${token.symbol}`;
   if (overSendable && token) {
     label = `Merge notes to send ${formatUnitsExact(value, decimals)} ${token.symbol}`;
@@ -317,6 +342,22 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   {tokens.length > 1 && <span className="text-faint text-[0.6rem] leading-none">▾</span>}
                 </button>
               </div>
+              {usd && <div className="mt-2 text-[0.7rem] text-faint font-data">{usd}</div>}
+              {/* Stated before someone hits it, not after. A ceiling you only
+                  meet by bouncing off it reads as a fault; one you can see
+                  reads as a decision. The second line answers the question a
+                  limit always raises, which is whether the way out has one too.
+
+                  It keeps its block in both states so nothing shifts under the
+                  cursor when the limit is crossed; only the colour moves. */}
+              <p
+                className={`mt-3 px-3 py-2 text-[0.7rem] leading-relaxed transition-colors ${
+                  overCap ? "bg-warn/10 text-warn" : "bg-ink3 text-faint"
+                }`}
+              >
+                Beta caps a send at ${BETA_USD_CAP}. Withdrawals are not capped, so whatever you
+                hold comes back out on your say so.
+              </p>
             </div>
 
             {/* Recipient */}
@@ -439,6 +480,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
           symbol={token.symbol}
           logoURI={token.logoURI}
           amount={amount}
+          usd={usd}
           to={trimmedTo}
           toSelf={toSelf}
           progress={shielded.progress}
@@ -557,7 +599,7 @@ function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: stri
       <div className="mt-3 px-1 space-y-2">
         <Row k="Reusable" v="never needs rotating" />
         <Row k="Your wallet" v="never appears in it" accent />
-        <Row k="Senders" v="this app and the cowl CLI both pay it" />
+        <Row k="Senders" v="any cowl client pays it" />
       </div>
 
       {address ? (

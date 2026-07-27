@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { activeNetwork } from "@/lib/networks";
 import type { Token } from "@/lib/tokens";
 import { TokenGlyph } from "./TokenModal";
 
@@ -32,20 +30,7 @@ export default function ConfirmModal({
   relay,
   onClose,
 }: Props) {
-  const [copied, setCopied] = useState(false);
   if (!open) return null;
-
-  const cliCmd = `cowl trade ${amount} ${receive.symbol} -n ${activeNetwork().key}`;
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(cliCmd);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* clipboard blocked — the command is visible to copy manually */
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4 bg-black/70" onClick={onClose}>
@@ -107,26 +92,15 @@ export default function ConfirmModal({
           )}
         </div>
 
-        {/* Browser proving not yet wired — hand off to the CLI, honestly */}
+        {/* A review, not a run. The card behind this one is still gated, so the
+            panel shows what a private swap does and stops there. */}
         <div className="px-5 pb-5">
-          <div className="bg-ink2 p-4">
-            <p className="text-xs text-muted leading-relaxed">
-              Browser proving is on the way. Right now the shielded proof runs on your machine.
-              Execute this trade from the terminal:
-            </p>
-            <div className="mt-3 flex items-center justify-between bg-ink px-3 py-2.5">
-              <code className="font-data text-[0.8rem] text-acid">{cliCmd}</code>
-              <button onClick={copy} className="label-soft text-muted hover:text-bone shrink-0 ml-3">
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <a
-              href="https://cowlprotocol.com/docs"
-              className="block mt-3 label-soft text-faint hover:text-bone"
-            >
-              Install the CLI → cowlprotocol.com/docs
-            </a>
-          </div>
+          <button
+            onClick={onClose}
+            className="w-full label-mono text-sm py-4 bg-ink3 text-muted hover:text-bone transition-colors"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>

@@ -13,6 +13,8 @@ type Props = {
   symbol: string;
   logoURI?: string;
   amount: string;
+  /** What the amount is worth, or null when the token has no price. */
+  usd: string | null;
   /** Full zcowl address of the recipient. */
   to: string;
   /** True when the recipient is this account — a note moved to itself. */
@@ -33,6 +35,7 @@ export default function SendConfirmModal({
   symbol,
   logoURI,
   amount,
+  usd,
   to,
   toSelf,
   progress,
@@ -65,8 +68,13 @@ export default function SendConfirmModal({
               <TokenGlyph symbol={symbol} src={logoURI} />
               <span className="text-faint label-soft whitespace-nowrap">Shielded balance</span>
             </span>
-            <span className="font-data text-lg text-bone whitespace-nowrap">
-              {amount} {symbol}
+            {/* The dollar figure belongs on the last screen before signing, not
+                only on the one where the number was typed. */}
+            <span className="text-right whitespace-nowrap">
+              <span className="font-data text-lg text-bone">
+                {amount} {symbol}
+              </span>
+              {usd && <span className="block font-data text-[0.7rem] text-faint">{usd}</span>}
             </span>
           </div>
           <div className="bg-ink2 p-4 mt-1">

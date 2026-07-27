@@ -129,7 +129,14 @@ type ShieldedContextValue = {
     tokenField: bigint;
     symbol: string;
     decimals: number;
-    /** How much one spend should be able to move when this is done. */
+    /**
+     * The payment this is clearing the way for — not the total draw.
+     *
+     * The relayer's fee rides in the same spend and has to be merged for too,
+     * but it is quoted here, per round, rather than passed in: a card reads its
+     * quote once and can be minutes stale by the time someone clicks, and a
+     * merge aimed at yesterday's fee finishes exactly short of today's.
+     */
     target: bigint;
   }) => Promise<void>;
   sendExec: (args: {
@@ -756,7 +763,10 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       // Each relayed round pays a fee out of the pair it merges, so the count
       // has to be taken against that fee or it reads low and the run stops
       // short — the exact failure the screen's round number must not have.
-      const rounds = mergesNeeded(wallet0, tokenField, target, quote0?.fee ?? 0n);
+      // The send this clears the way for pays a fee out of the same spend, so
+      // the ceiling has to clear the payment AND that fee — quoted here so it is
+      // today's, not whatever the card last saw.
+      const rounds = mergesNeeded(wallet0, tokenField, target + (quote0?.fee ?? 0n), quote0?.fee ?? 0n);
       if (rounds < 0) throw new Error("Even merged, this balance cannot cover that amount.");
       if (rounds === 0) return;
 
@@ -810,7 +820,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
             // Done the moment the book can carry the target, which is the
             // question the run actually exists to answer.
-            const left = mergesNeeded(wallet, tokenField, target, quote?.fee ?? 0n);
+            const left = mergesNeeded(wallet, tokenField, target + (quote?.fee ?? 0n), quote?.fee ?? 0n);
             if (left === 0) break merging;
             if (left < 0) throw new Error("Even merged, this balance cannot cover that amount.");
             // The estimate was low; let the row appear rather than overflow it.

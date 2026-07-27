@@ -150,6 +150,21 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   const drawn = value + relayFee;
 
   /**
+   * The largest payment this book can actually deliver.
+   *
+   * Not the balance less one fee. A spend reads two notes, so paying out
+   * everything means merging the rest down into them first, and every one of
+   * those rounds pays a relayer too — n notes cost n − 2 rounds plus the send
+   * itself. Subtracting a single fee writes a number that no amount of merging
+   * ever reaches: the run spends its way through every round and still comes up
+   * short, ending on "even merged, this balance cannot cover that amount" after
+   * paying for the attempt.
+   */
+  const noteCount = token ? shielded.balances.find((b) => b.token === token.field)?.notes ?? 0 : 0;
+  const feesToEmpty = BigInt(Math.max(noteCount - 1, 1)) * relayFee;
+  const maxSendable = balance > feesToEmpty ? balance - feesToEmpty : 0n;
+
+  /**
    * The fee buys one spend's gas whatever the payment is worth, so its share
    * shrinks as the amount grows. Worth naming, because in token terms a cheap
    * asset makes an ordinary fee look enormous — a fee of about a dollar reads
@@ -175,9 +190,21 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   // the whole balance cannot also pay a relayer out of it, and finding that out
   // at proving time would be finding it out too late.
   const overBalance = drawn > balance;
+  /**
+   * Held, but not deliverable.
+   *
+   * Gathering a fragmented book into two notes costs a fee per round, and those
+   * fees come out of the same balance — so a book can hold 250,000 and still
+   * top out at 148,000 once the 23 rounds it would take are paid for. Without
+   * this the amount reads as merely needing a merge, the button offers one, and
+   * the run spends its way through every round before ending on "even merged,
+   * this balance cannot cover that amount". Same number MAX writes, applied as
+   * a limit rather than only as a suggestion.
+   */
+  const overReach = !overBalance && value > maxSendable;
   // A join-split reads two notes at most, so a book can hold more than one
   // transfer can carry. Say which number applies rather than failing at proving.
-  const overSendable = !overBalance && drawn > sendable;
+  const overSendable = !overBalance && !overReach && drawn > sendable;
 
   // The dollar figure the cap is measured in, and the one the confirm panel
   // shows.
@@ -199,7 +226,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   const overCap = overBetaCap(amt, price);
 
   const ready =
-    unlocked && !!token && value > 0n && validTo && !overBalance && !overSendable && !overCap;
+    unlocked && !!token && value > 0n && validTo && !overBalance && !overReach && !overSendable && !overCap;
 
   let label = "Enter an amount";
   if (unlocked && tokens.length === 0) label = "Shield something first";
@@ -210,6 +237,9 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   // one someone can act on, so it takes the button.
   if (overCap) label = `Beta caps a send at $${BETA_USD_CAP}`;
   if (overBalance && token) label = `Insufficient shielded ${token.symbol}`;
+  if (overReach && token) {
+    label = `Fees to gather it cap this at ${formatBalanceShort(maxSendable, decimals)} ${token.symbol}`;
+  }
   if (overSendable && token) {
     label = `Merge notes to send ${formatUnitsExact(value, decimals)} ${token.symbol}`;
   }
@@ -245,9 +275,9 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
     shielded.clearProgress();
     setMerging(true);
     shielded
-      // The fee rides in the same spend, so the merge has to reach far enough
-      // to cover it too, not just the payment.
-      .consolidateExec({ tokenField: token.field, symbol: token.symbol, decimals, target: drawn })
+      // The payment, not the draw: the run quotes the fee itself, per round, so
+      // it merges against today's price rather than whatever this card last read.
+      .consolidateExec({ tokenField: token.field, symbol: token.symbol, decimals, target: value })
       .catch(() => {});
   };
 
@@ -337,13 +367,9 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                           // The field parses what it is given, so this writes a
                           // plain decimal, never the grouped display form.
                           //
-                          // Less the relayer's fee, which comes out of these
-                          // same notes: a MAX that spent the balance exactly
-                          // would leave nothing to pay for its own delivery and
-                          // land straight on "insufficient".
-                          onClick={() =>
-                            setAmount(formatUnits(balance > relayFee ? balance - relayFee : 0n, decimals))
-                          }
+                          // Less every fee getting there costs — the merge
+                          // rounds as well as the send. See maxSendable.
+                          onClick={() => setAmount(formatUnits(maxSendable, decimals))}
                           className="text-acid hover:text-acid2 font-data text-[0.65rem]"
                         >
                           MAX

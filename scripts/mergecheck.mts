@@ -315,6 +315,28 @@ check(
   check("the cycle needs few merges, not one per payment", merges < sends, `${merges} merges for ${sends} payments`);
 }
 
+// ---- held, but not deliverable ----------------------------------------------
+// Gathering a book into two notes costs a fee per round out of that same
+// balance, so what a book can pay out is not what it holds. The card writes
+// balance - (n-1) * fee both as MAX and as the limit; this pins that formula to
+// what merging can actually reach, in both directions.
+{
+  const FEE = 4_250n * ONE;
+  for (const n of [3, 9, 12, 25, 40]) {
+    const each = 10_000n * ONE;
+    const vals = Array.from({ length: n }, () => each);
+    const balance = each * BigInt(n);
+    const max = balance - BigInt(Math.max(n - 1, 1)) * FEE;
+    // Reachable: merging really does get a spend of `max` (plus its fee) home.
+    const at = mergesNeeded(bookOf(vals), TOKEN, max + FEE, FEE);
+    check(`${n} notes: the stated maximum is reachable`, at >= 0, `${at} rounds for ${max / ONE}`);
+    // And one wei more is not, or the number is too generous and the run would
+    // pay for every round before finding out.
+    const over = mergesNeeded(bookOf(vals), TOKEN, max + FEE + 1n, FEE);
+    check(`${n} notes: one wei past it is refused`, over < 0, `got ${over}`);
+  }
+}
+
 // ---- the wiring, read from the source ---------------------------------------
 // planConsolidate accepting a fee proves nothing about anything passing one.
 {

@@ -264,9 +264,24 @@ check(
   // The fee is drawn from the same notes, so a balance check against the bare
   // amount would wave through a send that cannot pay for its own delivery.
   check("the balance check covers the fee", /const drawn = value \+ relayFee/.test(card));
-  check("and so does the sendable check", /overSendable = !overBalance && drawn > sendable/.test(card));
-  check("MAX leaves room for the fee", /balance > relayFee \? balance - relayFee : 0n/.test(card));
-  check("merging targets the full draw", /target: drawn/.test(card));
+  check("and so does the sendable check", /overSendable =[^;]*drawn > sendable/.test(card));
+  // MAX has to leave room for every fee getting there, not one. A spend reads
+  // two notes, so emptying a book of n means n-2 merge rounds plus the send,
+  // and subtracting a single fee names an amount no amount of merging reaches.
+  check("MAX leaves room for every fee, not one", /feesToEmpty|maxSendable/.test(card));
+  check("and MAX writes that number", /setAmount\(formatUnits\(maxSendable/.test(card));
+  // The card's quote is fetched once and goes stale; the run quotes per round.
+  // So the merge is aimed at the payment and adds the fee it just quoted.
+  check("merging targets the payment, not a stale draw", /target: value/.test(card));
+  // A book can hold more than it can deliver, because gathering it costs a fee
+  // per round. Offering a merge that can never get there spends every round
+  // before saying so, which is the same shape as the MAX bug above.
+  check("an amount the fees put out of reach is refused up front", /overReach/.test(card));
+  check("and refusing it blocks the button", /!overReach/.test(card));
+  check(
+    "and the run adds its own fresh fee to that target",
+    /mergesNeeded\([^)]*target \+ \(quote0?\?\.fee/.test(provider),
+  );
   // The old copy promised the asset stayed hidden. Gasless is the default now,
   // and a relayed send names it — so that promise had to go rather than be
   // quietly broken.

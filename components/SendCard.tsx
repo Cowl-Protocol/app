@@ -320,6 +320,8 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
     if (shielded.progress?.done) {
       setAmount("");
       setTo("");
+      // The choice was for that payment. The next one starts gasless again.
+      setSelfPay(false);
     }
     shielded.clearProgress();
   };
@@ -651,6 +653,8 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
         onSelect={(t) => {
           setSelected(t.native ? 0n : BigInt(t.address));
           setAmount("");
+          // A different token is a different fee question — back to the default.
+          setSelfPay(false);
         }}
       />
 

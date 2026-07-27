@@ -212,6 +212,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const pick = (t: Token) => {
     setToken(t);
     setAmount("");
+    // A different token is a different fee question — back to the default.
+    setSelfPay(false);
   };
 
   const flip = () => {

@@ -216,12 +216,23 @@ check(
   check("a relayed send must name its asset", paid.plan.publicToken === COWL, `got ${paid.plan.publicToken}`);
   check("the fee leaves the pool in the open", paid.plan.fee === FEE);
   check("the payment is untouched by the fee", paid.outputs[0]!.note.value === 10n * 10n ** 18n);
-  // One note covers 10.01, so the join-split reads one and the change is what
-  // is left of it — the fee comes out of the sender's side, never the payment.
+  // Whatever the join-split reads, the sender's side absorbs the fee and the
+  // recipient does not: change is everything selected, less the payment and
+  // less the fee. Asserted against what was actually selected rather than
+  // against one note, because which notes get picked is the selector's call —
+  // it takes whichever selection leaves the highest ceiling, and on this book
+  // that is two notes rather than one.
+  const drawnIn = paid.inputLeaves
+    .map((i) => BigInt(book.notes.find((n) => n.leafIndex === i)!.value))
+    .reduce((s, v) => s + v, 0n);
   check(
     "the sender's change absorbs it",
-    paid.outputs[1]!.note.value === HOLD - 10n * 10n ** 18n - FEE,
-    `${paid.outputs[1]!.note.value}`,
+    paid.outputs[1]!.note.value === drawnIn - 10n * 10n ** 18n - FEE,
+    `${paid.inputLeaves.length} note(s) in, change ${paid.outputs[1]!.note.value}`,
+  );
+  check(
+    "nothing is conjured or lost across the join-split",
+    paid.outputs[0]!.note.value + paid.outputs[1]!.note.value + FEE === drawnIn,
   );
 
   // A withdrawal has no such choice: value genuinely leaves, and the turnstile

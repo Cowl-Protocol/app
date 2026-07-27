@@ -6,7 +6,7 @@
 // rounds before anyone signs the first. If that count is wrong the run stops
 // short and the send is still capped, having spent gas to get there.
 import { readFileSync } from "node:fs";
-import { mergesNeeded, planConsolidate, emptyPool, emptyWallet, type Wallet } from "../lib/shielded/pool";
+import { mergesNeeded, planConsolidate, selectUpTo2, emptyPool, emptyWallet, type Wallet } from "../lib/shielded/pool";
 import { fieldToHex } from "../lib/shielded/field";
 
 let failures = 0;
@@ -213,6 +213,106 @@ check(
   check("a self-paid merge names no asset", free.plan.publicToken === 0n);
   check("a relayed merge names its asset", withFee.plan.publicToken === TOKEN);
   check("the fee leaves the merged note smaller", withFee.outputs[0]!.note.value === free.outputs[0]!.note.value - FEE);
+}
+
+// ---- spending does not demolish what merging built ---------------------------
+// The cycle that costs real money: merge up to a ceiling, pay a small amount,
+// and watch the payment reach past a pile of small notes for the big one the
+// merges just built. Every such payment buys another round of merge fees. Two
+// inputs cost exactly what one costs, so preferring the selection that leaves
+// the highest ceiling is free.
+{
+  const merged = 3_987_322n * ONE;
+  const book = bookOf([merged, ...Array.from({ length: 8 }, () => 1_000_000n * ONE)]);
+  const FEE = 4_657n * ONE;
+  const ceilingAfter = (picked: bigint[], change: bigint) => {
+    const rest = [merged, ...Array.from({ length: 8 }, () => 1_000_000n * ONE)];
+    for (const p of picked) rest.splice(rest.indexOf(p), 1);
+    const after = [...rest, ...(change > 0n ? [change] : [])].sort((a, b) => (a < b ? 1 : -1));
+    return (after[0] ?? 0n) + (after[1] ?? 0n);
+  };
+  const spend = (amount: bigint) => {
+    const need = amount + FEE;
+    const picked = selectUpTo2(book, TOKEN, need).map((n) => BigInt(n.value));
+    const total = picked.reduce((s, v) => s + v, 0n);
+    return { picked, ceiling: ceilingAfter(picked, total - need), ate: picked.includes(merged) };
+  };
+
+  // Below the merged note's own size the old rule already behaved; the point is
+  // it now also consolidates on the way past, lifting the ceiling rather than
+  // shaving a small note off the pile.
+  const small = spend(500_000n * ONE);
+  check("a small payment leaves the merged note alone", !small.ate);
+  check("and lifts the ceiling on its way", small.ceiling > merged + 1_000_000n * ONE, `${small.ceiling / ONE}`);
+
+  // This is the case that used to cost a re-merge: two 1M notes cover it, so
+  // the 4M note has no business being spent.
+  const mid = spend(1_500_000n * ONE);
+  check("a payment two small notes can cover leaves the merged note alone", !mid.ate);
+  check("so the ceiling does not move", mid.ceiling === merged + 1_000_000n * ONE, `${mid.ceiling / ONE}`);
+
+  // Past what the small notes can carry the merged note has to go — but pairing
+  // it beats spending it alone, because the change comes back as one note
+  // instead of leaving the pile behind.
+  const big = spend(2_000_000n * ONE);
+  check("a payment beyond them spends it, as it must", big.ate);
+  const alone = merged - (2_000_000n * ONE + FEE);
+  check(
+    "and pairs it rather than stranding the change",
+    big.ceiling > alone + 1_000_000n * ONE,
+    `${big.ceiling / ONE} against ${(alone + 1_000_000n * ONE) / ONE} if spent alone`,
+  );
+
+  // Never at the cost of correctness: the selection has to actually cover.
+  for (const amt of [100_000n, 500_000n, 1_500_000n, 2_000_000n, 4_500_000n]) {
+    const need = amt * ONE + FEE;
+    const total = selectUpTo2(book, TOKEN, need).reduce((s, n) => s + BigInt(n.value), 0n);
+    if (total < need) check(`selection covers ${amt}`, false);
+  }
+  check("every selection covers what it was asked for", true);
+}
+
+// ---- the merge / spend / merge cycle, run to exhaustion ----------------------
+// The worry this answers: a note is merged, then broken up again by a small
+// payment, over and over. Nothing may be conjured or lost across a hundred of
+// those, and the loop must end on a reason rather than spin.
+{
+  const FEE = 4_250n * ONE;
+  let vals = Array.from({ length: 12 }, () => 1_000_000n * ONE);
+  const opening = vals.reduce((s, v) => s + v, 0n);
+  let sent = 0n, fees = 0n, merges = 0, sends = 0, broke = "";
+  const top2 = (v: bigint[]) => [...v].sort((a, b) => (a < b ? 1 : -1)).slice(0, 2).reduce((s, x) => s + x, 0n);
+
+  cycles: for (let c = 0; c < 40 && !broke; c++) {
+    let guard = 0;
+    while (mergesNeeded(bookOf(vals), TOKEN, top2(vals) + ONE, FEE) > 0) {
+      if (++guard > 60) { broke = "merge loop did not converge"; break cycles; }
+      const p = planConsolidate(emptyPool(), bookOf(vals), { mpk: 1n, viewPubHex: "00" } as never, TOKEN, 1n, FEE, 1n);
+      const outs = p.outputs.map((o) => o.note.value);
+      if (outs.some((v) => v < 0n)) { broke = "negative output"; break cycles; }
+      vals = [...vals.filter((_, i) => !p.inputLeaves.includes(i)), ...outs.filter((v) => v > 0n)];
+      fees += FEE; merges++;
+    }
+    const pay = top2(vals) / 10n;
+    if (pay <= FEE) break;
+    let picked;
+    try { picked = selectUpTo2(bookOf(vals), TOKEN, pay + FEE); } catch { break; }
+    const drawn = picked.reduce((s, n) => s + BigInt(n.value), 0n);
+    const change = drawn - pay - FEE;
+    if (change < 0n) { broke = "negative change"; break; }
+    vals = [...vals.filter((_, i) => !picked.some((p) => p.leafIndex === i)), ...(change > 0n ? [change] : [])];
+    sent += pay; fees += FEE; sends++;
+  }
+
+  const held = vals.reduce((s, v) => s + v, 0n);
+  check("the cycle never breaks an invariant", !broke, broke || `${merges} merges, ${sends} sends`);
+  check(
+    "and conserves to the wei across all of it",
+    opening - sent - fees - held === 0n,
+    `${(opening - held) / ONE} left the book over ${merges + sends} spends`,
+  );
+  // The whole point of the selector change: far fewer rounds bought back.
+  check("the cycle needs few merges, not one per payment", merges < sends, `${merges} merges for ${sends} payments`);
 }
 
 // ---- the wiring, read from the source ---------------------------------------

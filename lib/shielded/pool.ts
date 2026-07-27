@@ -141,17 +141,68 @@ export type PlannedSpend = {
   inputLeaves: number[];
 };
 
-/** Pick one or two unspent notes of `token` covering `need`; a join-split takes at most two. */
+/**
+ * Pick one or two unspent notes of `token` covering `need`; a join-split takes
+ * at most two.
+ *
+ * Which two matters, and the obvious rule is the wrong one. Taking the smallest
+ * single note that covers `need` reads as thrifty, but on a book that has been
+ * consolidated it reaches straight past a pile of small notes for the big one
+ * merging just built — a payment of 1.5M out of a 4M note leaves 2.5M as change
+ * and drops the ceiling from 5M to 3.5M, when two 1M notes would have covered it
+ * and left the 4M alone. The ceiling is what decides whether the next payment
+ * needs merging at all, so spending it down means paying to rebuild it.
+ *
+ * Two inputs cost exactly what one costs — same circuit, same proof, same gas —
+ * so there is nothing to trade away. This picks whichever valid selection leaves
+ * the highest ceiling, breaking ties toward fewer notes left behind, which is
+ * the same direction merging pulls. Candidates are every single note that covers
+ * and every pair that does; a book fragmented enough for that to be slow is one
+ * where the choice matters most.
+ */
 export function selectUpTo2(wallet: Wallet, token: bigint, need: bigint): StoredNote[] {
   const avail = wallet.notes
     .filter((n) => !n.spent && hexToField(n.token) === token)
     .sort((a, b) => (hexToField(a.value) < hexToField(b.value) ? -1 : 1));
-  const single = avail.find((n) => hexToField(n.value) >= need);
-  if (single) return [single];
-  const two = avail.slice(-2);
-  const twoTotal = two.reduce((s, n) => s + hexToField(n.value), 0n);
-  if (two.length === 2 && twoTotal >= need) return two;
-  const have = avail.reduce((s, n) => s + hexToField(n.value), 0n);
+  // Zero-value notes fund nothing and the circuit treats them as dummies, so
+  // they are never worth selecting as an input.
+  const usable = avail.filter((n) => hexToField(n.value) > 0n);
+  const desc = [...usable].reverse();
+
+  let best: StoredNote[] | null = null;
+  let bestCeiling = -1n;
+  let bestLeft = Number.MAX_SAFE_INTEGER;
+
+  const consider = (pick: StoredNote[]) => {
+    const total = pick.reduce((s, n) => s + hexToField(n.value), 0n);
+    if (total < need) return;
+    const taken = new Set(pick.map((n) => n.leafIndex));
+    // The two largest left standing, plus the change this spend hands back —
+    // that is the ceiling the next payment will run into.
+    const rest: bigint[] = [];
+    for (const n of desc) {
+      if (taken.has(n.leafIndex)) continue;
+      rest.push(hexToField(n.value));
+      if (rest.length === 2) break;
+    }
+    const change = total - need;
+    const after = [...rest, ...(change > 0n ? [change] : [])].sort((a, b) => (a < b ? 1 : -1));
+    const ceiling = (after[0] ?? 0n) + (after[1] ?? 0n);
+    const left = usable.length - pick.length + (change > 0n ? 1 : 0);
+    if (ceiling > bestCeiling || (ceiling === bestCeiling && left < bestLeft)) {
+      best = pick;
+      bestCeiling = ceiling;
+      bestLeft = left;
+    }
+  };
+
+  for (let i = 0; i < usable.length; i++) {
+    consider([usable[i]!]);
+    for (let j = i + 1; j < usable.length; j++) consider([usable[i]!, usable[j]!]);
+  }
+  if (best) return best;
+
+  const have = usable.reduce((s, n) => s + hexToField(n.value), 0n);
   if (have < need) {
     throw new Error(`Insufficient shielded balance: need ${formatEther(need)}, have ${formatEther(have)}.`);
   }

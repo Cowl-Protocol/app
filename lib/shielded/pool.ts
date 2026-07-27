@@ -215,7 +215,9 @@ export function planConsolidate(
       inputs: planInputs([a, b]),
       outputs: [outParts(out0), outParts(out1)],
       leaves: pool.commitments.map(hexToField),
-      publicToken: token,
+      // A merge never has a public leg, so this field is free — and naming the
+      // asset here would say which token a book is fragmented in.
+      publicToken: 0n,
       publicValue: 0n,
       fee: 0n,
       recipient: 0n,
@@ -294,7 +296,17 @@ export function planUnshield(
   };
 }
 
-/** Plan a private send: `value` to the recipient, change back to you, no public leg. */
+/**
+ * Plan a private send: `value` to the recipient, change back to you, no public leg.
+ *
+ * The circuit ties `public_token` to the notes' asset only when something
+ * actually leaves — `(public_value + fee) * (public_token - token) == 0` — so a
+ * send that pays no relayer is free to leave it at zero and say nothing about
+ * which asset moved. Filling it in anyway is a leak nobody is charging for: the
+ * value stays hidden, the parties stay hidden, and then the calldata names the
+ * token. A relayer fee forfeits that, because the fee is paid out of these same
+ * notes and the constraint above then pins the field to the real asset.
+ */
 export function planSend(
   pool: Pool,
   wallet: Wallet,
@@ -318,7 +330,8 @@ export function planSend(
       inputs: planInputs(inputs),
       outputs: [outParts(out0), outParts(out1)],
       leaves: pool.commitments.map(hexToField),
-      publicToken: token,
+      // Zero unless a fee forces it — see above.
+      publicToken: fee === 0n ? 0n : token,
       publicValue: 0n,
       fee,
       recipient: 0n,

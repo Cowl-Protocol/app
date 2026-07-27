@@ -19,7 +19,15 @@ import { commitment, nullifier, type Note } from "../lib/shielded/note";
 import { encryptNote, tryDecryptNote } from "../lib/shielded/crypto";
 import { decodePaymentAddress, deriveShieldedKeysFromSignature, isPaymentAddress } from "../lib/shielded/keys";
 import { computeRoot } from "../lib/shielded/tree";
-import { applyScan, computeBalance, emptyPool, emptyWallet, planSend } from "../lib/shielded/pool";
+import {
+  applyScan,
+  computeBalance,
+  emptyPool,
+  emptyWallet,
+  planConsolidate,
+  planSend,
+  planUnshield,
+} from "../lib/shielded/pool";
 import { proveTransfer } from "../lib/shielded/prove";
 
 let failures = 0;
@@ -146,6 +154,80 @@ check(
   "the spent note reads spent",
   senderWallet.notes.filter((n) => !n.spent).every((n) => hexToField(n.value) === HELD - PAY),
 );
+
+// ---- the asset stays unnamed ------------------------------------------------
+// Everything above moves ETH, whose token field is 0 no matter what the client
+// does — which is why none of it could tell a zeroed field from a filled one.
+// It was filled. Nine pure sends went out on mainnet each stating in calldata
+// that COWL had moved: amount hidden, parties hidden, asset in the clear.
+//
+// The circuit ties that field to the notes' asset only when something leaves —
+// (public_value + fee) * (public_token - token) == 0 — so a send paying no
+// relayer is free to leave it at zero. Pinned in Noir by
+// send_need_not_name_its_asset; this is the client half of the same claim, and
+// it needs a real ERC-20 to mean anything.
+{
+  const COWL = BigInt("0xfc7cb8a3df69c0f658ac5fb1e31de1843e04e38f");
+  const HOLD = 100n * 10n ** 18n;
+
+  const p = emptyPool();
+  const notes: Note[] = [
+    { value: HOLD, token: COWL, mpk: sender.mpk, blinding: randomField() },
+    { value: HOLD, token: COWL, mpk: sender.mpk, blinding: randomField() },
+    { value: HOLD, token: COWL, mpk: sender.mpk, blinding: randomField() },
+  ];
+  for (const n of notes) {
+    p.commitments.push(fieldToHex(commitment(n)));
+    p.ciphertexts.push(encryptNote(n, sender.viewPubHex));
+  }
+  p.root = fieldToHex(computeRoot(p.commitments.map(hexToField)));
+  const book = emptyWallet();
+  applyScan(p, book, sender);
+
+  const to = decodePaymentAddress(recipient.paymentAddress);
+  const free = planSend(p, book, sender, to, 10n * 10n ** 18n, COWL, CHAIN_ID);
+  check("a send paying no fee names no asset", free.plan.publicToken === 0n, `got ${free.plan.publicToken}`);
+  // The note the recipient receives must still hold the real token, or they
+  // could never spend it. What is hidden is the calldata, not the note.
+  check("the recipient is still paid in the real asset", free.outputs[0]!.note.token === COWL);
+  check("and the notes behind it are the real asset", free.plan.token === COWL);
+
+  // Witness solving is not proof: what the pool verifies is a bb evm-target
+  // proof against 14 public inputs, and input 8 is this field. Prove it for
+  // real, so the zeroed send is known to clear the deployed verifier rather
+  // than merely to satisfy the constraint on paper.
+  const zp = await proveTransfer(free.plan, { threads: 4 });
+  check(
+    "the zeroed send still proves",
+    zp.publicInputs.length === 14 && zp.spend.token === 0n,
+    `public input 8 = ${zp.publicInputs[8]}`,
+  );
+  check("and the asset never enters the calldata", zp.spend.token === 0n && zp.spend.value === 0n);
+
+  const merged = planConsolidate(p, book, sender, COWL, CHAIN_ID);
+  check("a merge names no asset either", merged.plan.publicToken === 0n, `got ${merged.plan.publicToken}`);
+
+  // Not a regression — the constraint above forbids hiding the asset once a fee
+  // leaves, so a relayed send has to name it or build a proof that cannot
+  // verify. This is what gasless costs, stated rather than discovered.
+  const FEE = 10n ** 16n;
+  const paid = planSend(p, book, sender, to, 10n * 10n ** 18n, COWL, CHAIN_ID, FEE, 0xbeefn);
+  check("a relayed send must name its asset", paid.plan.publicToken === COWL, `got ${paid.plan.publicToken}`);
+  check("the fee leaves the pool in the open", paid.plan.fee === FEE);
+  check("the payment is untouched by the fee", paid.outputs[0]!.note.value === 10n * 10n ** 18n);
+  // One note covers 10.01, so the join-split reads one and the change is what
+  // is left of it — the fee comes out of the sender's side, never the payment.
+  check(
+    "the sender's change absorbs it",
+    paid.outputs[1]!.note.value === HOLD - 10n * 10n ** 18n - FEE,
+    `${paid.outputs[1]!.note.value}`,
+  );
+
+  // A withdrawal has no such choice: value genuinely leaves, and the turnstile
+  // meters pooledValue[token], which it cannot do against a zero.
+  const exit = planUnshield(p, book, sender, 10n * 10n ** 18n, COWL, 0xbeefn, CHAIN_ID);
+  check("a withdrawal always names its asset", exit.plan.publicToken === COWL, `got ${exit.plan.publicToken}`);
+}
 
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -334,6 +334,26 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   keysRef.current = keys;
 
   /**
+   * The record step's sync, with the part the deadline used to drop.
+   *
+   * withDeadline abandons the wait, not the work: the chain read keeps running
+   * and eventually saves the fresh pool to the store — but nothing re-read it,
+   * so a run could finish green while every balance on screen stayed stale
+   * until the next manual refresh. When the read outlives the deadline, its
+   * landing now republishes quietly, and the pending note it carries is
+   * adopted by commitment in the same scan.
+   */
+  const recordSync = useCallback(
+    async (k: ShieldedKeys) => {
+      const read = syncShieldedPool();
+      const result = await withDeadline(read, RECORD_DEADLINE).catch(() => null);
+      if (!result) read.then(() => scanAndPublish(k)).catch(() => {});
+      return result;
+    },
+    [scanAndPublish],
+  );
+
+  /**
    * The unlocked account, deriving it first if this session has not yet.
    *
    * Callers reach for the keys when they need them rather than being made to
@@ -488,7 +508,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
               prog.step = "record";
               publish();
               try {
-                const after = await withDeadline(syncShieldedPool(), RECORD_DEADLINE);
+                const after = await recordSync(k);
                 if (after) {
                   const w2 = loadWallet(net.key, k);
                   recordMyNote(after.pool, w2, k, note, receipt.leafIndex);
@@ -627,7 +647,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
               prog.step = "record";
               publish();
-              await withDeadline(syncShieldedPool(), RECORD_DEADLINE).catch(() => null);
+              await recordSync(k);
               break;
             } catch (e) {
               if (isStaleRoot(e) && attempt < 2) continue; // root moved — replan
@@ -772,7 +792,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
             prog.step = "record";
             publish();
-            await withDeadline(syncShieldedPool(), RECORD_DEADLINE).catch(() => null);
+            await recordSync(k);
             break;
           } catch (e) {
             if (isStaleRoot(e) && attempt < 2) continue; // root moved — replan
@@ -941,7 +961,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             prog.step = "record";
             publish();
             try {
-              const after = await withDeadline(syncShieldedPool(), RECORD_DEADLINE);
+              const after = await recordSync(k);
               if (after) {
                 const w2 = loadWallet(net.key, k);
                 recordMyNote(after.pool, w2, k, outNote, at.leafIndex);
@@ -1103,7 +1123,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
               publish();
               prog.step = "record";
               publish();
-              await withDeadline(syncShieldedPool(), RECORD_DEADLINE).catch(() => null);
+              await recordSync(k);
               break;
             } catch (e) {
               if (isStaleRoot(e) && attempt < 2) continue;

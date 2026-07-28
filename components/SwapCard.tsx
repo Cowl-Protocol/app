@@ -119,6 +119,12 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const drawn = maxIn + relayFee;
   const selfGas = useSelfGasEstimate(1, typed > 0n && !gasless, net.tradeGas ?? 15_000_000n);
 
+  // The fee buys one trade's gas whatever the size, so its share shrinks as
+  // the trade grows — a flat fee on a tiny swap is most of the swap, and only
+  // the share says so.
+  const feeSharePct = relayFee > 0n && payValue > 0n ? Number((relayFee * 1000n) / payValue) / 10 : 0;
+  const feeIsSteep = gasless && feeSharePct >= 10;
+
   const balance = unlocked ? shielded.balanceOf(inField) : 0n;
   const sendable = unlocked ? shielded.sendableOf(inField) : 0n;
   // What the book already holds of the receive side — after a swap lands, this
@@ -528,6 +534,15 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
                       v={`${fmtIn(drawn, inMeta.decimals)} ${inMeta.symbol}`}
                       accent
                     />
+                    {/* Not a blocker — the trade is valid, just expensive at
+                        this size, and only the trader can weigh that. */}
+                    {feeIsSteep && (
+                      <p className="text-[0.7rem] text-warn leading-relaxed pt-1">
+                        That fee is {feeSharePct.toFixed(0)}% of what you are trading. It costs one
+                        trade&apos;s gas whatever the size, so a larger swap pays the same fee and a
+                        smaller share of it.
+                      </p>
+                    )}
                   </>
                 )}
                 {!gasless && !relayChecking && priced && (

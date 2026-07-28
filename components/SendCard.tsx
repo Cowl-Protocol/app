@@ -24,7 +24,9 @@ import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
 import { TOKENS, tokenMetaForField } from "@/lib/tokens";
 import type { useWallet } from "@/lib/useWallet";
+import { explainError } from "@/lib/errors";
 import { useShielded, type OpProgress } from "./ShieldedProvider";
+import ErrorNotice from "./ErrorNotice";
 import SendConfirmModal from "./SendConfirmModal";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
@@ -275,8 +277,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
     try {
       await shielded.unlock();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setUnlockError(/rejected|denied/i.test(msg) ? "Signature declined in the wallet." : msg.split("\n")[0] ?? msg);
+      setUnlockError(explainError(e).what);
     }
   };
 
@@ -922,7 +923,7 @@ export function MergeProgressModal({
               Stay here until the last round lands. Whatever already reached the chain is done.
             </p>
           )}
-          {progress?.error && <p className="text-xs text-[#ff6b6b] leading-relaxed">{progress.error}</p>}
+          {progress?.error && <ErrorNotice message={progress.error} detail={progress.errorDetail} />}
           {progress?.done && (
             <p className="text-xs text-muted leading-relaxed">
               Merged. The amount you were after fits in one spend now.

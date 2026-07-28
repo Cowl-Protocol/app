@@ -66,6 +66,7 @@ import {
 } from "@/lib/shielded/contract";
 import { proveShieldOffThread, proveTransferOffThread } from "@/lib/shielded/prover";
 import { relaySpend, relayTrade, tryQuote } from "@/lib/relay";
+import { explainError } from "@/lib/errors";
 
 const net = activeNetwork();
 
@@ -87,7 +88,10 @@ export type OpProgress = {
   done: boolean;
   /** True while a relayer is carrying the parts, so the screen can say who pays. */
   relayed?: boolean;
+  /** What happened, already translated for a person — see lib/errors. */
   error?: string;
+  /** The raw first line, when it adds anything the sentence does not. */
+  errorDetail?: string;
   /** When the current spread wait ends, so the modal can count down to it. */
   waitUntil?: number;
 };
@@ -199,12 +203,12 @@ export function useShielded(): ShieldedContextValue {
   return v;
 }
 
-/** Wallet rejections read as a calm sentence, chain reverts keep their name. */
-function opError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (/user rejected|denied|rejected the request/i.test(msg)) return "Rejected in the wallet.";
-  const line = msg.split("\n")[0] ?? msg;
-  return line.length > 180 ? line.slice(0, 177) + "…" : line;
+/** Write a failure onto the run, translated for the person watching it. */
+function failRun(prog: OpProgress, e: unknown): void {
+  const ex = explainError(e);
+  prog.error = ex.what;
+  prog.errorDetail = ex.detail;
+  prog.waitUntil = undefined;
 }
 
 /**
@@ -507,8 +511,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
         prog.waitUntil = undefined;
         publish();
       } catch (e) {
-        prog.error = opError(e);
-        prog.waitUntil = undefined;
+        failRun(prog, e);
         publish();
         throw e;
       }
@@ -638,8 +641,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
         prog.waitUntil = undefined;
         publish();
       } catch (e) {
-        prog.error = opError(e);
-        prog.waitUntil = undefined;
+        failRun(prog, e);
         publish();
         throw e;
       }
@@ -782,7 +784,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
         prog.done = true;
         publish();
       } catch (e) {
-        prog.error = opError(e);
+        failRun(prog, e);
         publish();
         throw e;
       }
@@ -960,7 +962,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
         prog.done = true;
         publish();
       } catch (e) {
-        prog.error = opError(e);
+        failRun(prog, e);
         publish();
         throw e;
       }
@@ -1116,7 +1118,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
         prog.done = true;
         publish();
       } catch (e) {
-        prog.error = opError(e);
+        failRun(prog, e);
         publish();
         throw e;
       }

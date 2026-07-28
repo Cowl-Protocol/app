@@ -4,6 +4,7 @@
 // review says what the chain will and will not learn, then RunProgress renders
 // the live run through the shielded context.
 import type { OpProgress } from "./ShieldedProvider";
+import ErrorNotice from "./ErrorNotice";
 import RunProgress from "./RunProgress";
 import Spinner from "./Spinner";
 import { TokenGlyph } from "./TokenModal";
@@ -124,7 +125,9 @@ export default function SendConfirmModal({
               </p>
             )}
             {progress.error && (
-              <p className="text-xs text-[#ff6b6b] leading-relaxed pt-1">{progress.error}</p>
+              <div className="pt-1">
+                <ErrorNotice message={progress.error} detail={progress.errorDetail} />
+              </div>
             )}
             {progress.done && (
               <p className="text-xs text-muted leading-relaxed pt-1">

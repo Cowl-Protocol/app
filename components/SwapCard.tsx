@@ -23,6 +23,7 @@ import { useRelayQuote, useSelfGasEstimate } from "@/lib/relay";
 import { tradeInputFor, useTradeQuote } from "@/lib/trade";
 import { activeNetwork } from "@/lib/networks";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
+import { explainError } from "@/lib/errors";
 import type { useWallet } from "@/lib/useWallet";
 import { useShielded } from "./ShieldedProvider";
 import SwapConfirmModal from "./SwapConfirmModal";
@@ -205,8 +206,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
     try {
       await shielded.unlock();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setUnlockError(/rejected|denied/i.test(msg) ? "Signature declined in the wallet." : msg.split("\n")[0] ?? msg);
+      setUnlockError(explainError(e).what);
     }
   };
 

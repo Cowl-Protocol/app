@@ -7,6 +7,7 @@
 // the copy asks for the tab to stay open until the last one lands.
 import type { Token } from "@/lib/tokens";
 import type { OpProgress } from "./ShieldedProvider";
+import ErrorNotice from "./ErrorNotice";
 import RunProgress from "./RunProgress";
 import Spinner from "./Spinner";
 import { TokenGlyph } from "./TokenModal";
@@ -147,7 +148,9 @@ export default function BoundaryConfirmModal({
               </p>
             )}
             {progress.error && (
-              <p className="text-xs text-[#ff6b6b] leading-relaxed pt-1">{progress.error}</p>
+              <div className="pt-1">
+                <ErrorNotice message={progress.error} detail={progress.errorDetail} />
+              </div>
             )}
             {progress.done && (
               <p className="text-xs text-muted leading-relaxed pt-1">

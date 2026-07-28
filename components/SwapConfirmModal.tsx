@@ -5,6 +5,7 @@
 // the same transaction — revert anywhere and the trade never happened. The
 // review says exactly that, then RunProgress renders the live run.
 import type { OpProgress } from "./ShieldedProvider";
+import ErrorNotice from "./ErrorNotice";
 import RunProgress from "./RunProgress";
 import Spinner from "./Spinner";
 import { TokenGlyph } from "./TokenModal";
@@ -137,7 +138,9 @@ export default function SwapConfirmModal({
               </p>
             )}
             {progress.error && (
-              <p className="text-xs text-[#ff6b6b] leading-relaxed pt-1">{progress.error}</p>
+              <div className="pt-1">
+                <ErrorNotice message={progress.error} detail={progress.errorDetail} />
+              </div>
             )}
             {progress.done && (
               <p className="text-xs text-muted leading-relaxed pt-1">

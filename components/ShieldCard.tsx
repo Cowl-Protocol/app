@@ -8,6 +8,7 @@ import { decompose, groupParts, maxAfterFee, MAX_BOUNDARY_TXS, sharedCeiling, ti
 import { formatBalance, formatBalanceShort, formatUnitsExact, usdOf } from "@/lib/prices";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { useRelayQuote, useSelfGasEstimate } from "@/lib/relay";
+import { explainError } from "@/lib/errors";
 import { useTokenPrice } from "@/lib/tokenPrice";
 import { BETA_USD_CAP, overBetaCap } from "@/lib/betaLimits";
 import { parseWindow } from "@/lib/spread";
@@ -245,8 +246,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     try {
       await shielded.unlock();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setUnlockError(/rejected|denied/i.test(msg) ? "Signature declined in the wallet." : msg.split("\n")[0] ?? msg);
+      setUnlockError(explainError(e).what);
     }
   };
 

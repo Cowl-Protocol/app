@@ -308,6 +308,13 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
 
   const refreshWith = useCallback(
     async (k: ShieldedKeys) => {
+      // The cached book first. The chain sync below can take minutes on the
+      // endpoint that serves history, and a screen that stays at zero for all
+      // of it reads as "you hold nothing" — the one thing a balance must not
+      // say wrongly. The last synced pool is sitting in the store, so balances
+      // appear the moment the keys exist, and the fresh read replaces them
+      // when it lands.
+      scanAndPublish(k);
       setSyncing(true);
       try {
         await syncShieldedPool();

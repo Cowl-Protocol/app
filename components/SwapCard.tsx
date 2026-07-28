@@ -184,7 +184,9 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   if (typed > 0n && !sizeOk) label = "Pick a shared size";
   if (typed > 0n && sizeOk && tradeQuote.state === "checking") label = "Pricing at the venue";
   if (tradeQuote.state === "unpriceable") label = `No venue route for ${receive.symbol}`;
-  if (unlocked && balance === 0n) label = `Shield ${inMeta.symbol} first`;
+  // Not while the book is still being read — an empty balance mid-sync is
+  // "unknown", not "shield first".
+  if (unlocked && balance === 0n && !shielded.syncing) label = `Shield ${inMeta.symbol} first`;
   if (overBalance) {
     label = feeTrapped
       ? "Not enough for the trade plus the relayer fee"

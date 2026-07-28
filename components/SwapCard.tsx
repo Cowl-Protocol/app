@@ -193,7 +193,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
       ? "Not enough for the trade plus the relayer fee"
       : `Insufficient shielded ${inMeta.symbol}`;
   }
-  if (overSendable) label = `Merge notes to swap this much`;
+  if (overSendable) label = "Merge notes first";
 
   const flip = () => {
     setReceive(receive.native ? tokenBySymbol("USDG") : tokenBySymbol("ETH"));

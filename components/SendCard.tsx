@@ -269,7 +269,9 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
     label = `Fees to gather it cap this at ${formatBalanceShort(maxSendable, decimals)} ${token.symbol}`;
   }
   if (overSendable && token) {
-    label = `Merge notes to send ${formatUnitsExact(value, decimals)} ${token.symbol}`;
+    // Just the action — the explainer above the button already carries the
+    // numbers, and a full-precision amount wrapped the label to two lines.
+    label = "Merge notes first";
   }
 
   const unlock = async () => {

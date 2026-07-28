@@ -210,6 +210,24 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
     }
   };
 
+  /**
+   * The pickers open a book, and there is no book until the account unlocks.
+   * A chip tapped too early walks the person through the gate in order —
+   * connect, then unlock, then pick — instead of opening a list that could
+   * not show what anything is worth.
+   */
+  const pickOrUnlock = (side: "pay" | "receive") => {
+    if (!wallet.address) {
+      wallet.connect();
+      return;
+    }
+    if (!unlocked) {
+      void unlock();
+      return;
+    }
+    setPicking(side);
+  };
+
   const merge = () => {
     shielded.clearProgress();
     setMerging(true);
@@ -325,7 +343,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               }}
             />
             <button
-              onClick={() => setPicking("pay")}
+              onClick={() => pickOrUnlock("pay")}
               className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2 transition-colors hover:bg-[#1c2027]"
             >
               <TokenGlyph symbol={inMeta.symbol} src={logoFor(inField)} />
@@ -379,7 +397,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               }}
             />
             <button
-              onClick={() => setPicking("receive")}
+              onClick={() => pickOrUnlock("receive")}
               className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2 transition-colors hover:bg-[#1c2027]"
             >
               <TokenGlyph symbol={receive.symbol} src={receive.logoURI} />
@@ -643,26 +661,17 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
       </p>
 
       {/* The pay picker offers the shielded book, the way the send card does —
-          a token with no note behind it cannot fund a trade. Before unlock it
-          falls back to the two tokens a route can start from. */}
-      {unlocked ? (
-        <TokenModal
-          open={picking === "pay"}
-          assets={payAssets}
-          assetsLoading={shieldedLoading}
-          emptyNote="Nothing shielded to pay with yet. Shield ETH or USDG and it appears here."
-          onClose={() => setPicking(null)}
-          onSelect={pickPay}
-        />
-      ) : (
-        <TokenModal
-          open={picking === "pay"}
-          tokens={SWAP_TOKENS}
-          owner={wallet.address as `0x${string}` | null}
-          onClose={() => setPicking(null)}
-          onSelect={pickPay}
-        />
-      )}
+          a token with no note behind it cannot fund a trade. It only opens
+          unlocked (pickOrUnlock gates the chips), so there is always a book
+          to show. */}
+      <TokenModal
+        open={picking === "pay"}
+        assets={payAssets}
+        assetsLoading={shieldedLoading}
+        emptyNote="Nothing shielded to pay with yet. Shield ETH or USDG and it appears here."
+        onClose={() => setPicking(null)}
+        onSelect={pickPay}
+      />
 
       {/* The receive picker chooses what arrives — curated list, search, and a
           pasted ERC-20 imports the way it does everywhere else. */}

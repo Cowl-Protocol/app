@@ -244,6 +244,201 @@ export async function submitSpend(
   };
 }
 
+// ---- trade adapter ----------------------------------------------------------
+// Port of the CLI's trade surface (cli/src/shielded/contract.ts). A trade is
+// one CowlTradeAdapter.trade() call carrying two chained proofs: a spend whose
+// payout leg names the adapter, and a shield for the exact output, proven
+// against the root the spend leaves behind.
+
+const SPEND_COMPONENTS = [
+  { name: "membershipRoot", type: "bytes32" },
+  { name: "nullifiers", type: "bytes32[2]" },
+  { name: "commitments", type: "bytes32[2]" },
+  { name: "newRoot", type: "bytes32" },
+  { name: "token", type: "uint256" },
+  { name: "value", type: "uint256" },
+  { name: "fee", type: "uint256" },
+  { name: "recipient", type: "address" },
+  { name: "relayer", type: "address" },
+] as const;
+
+export const TRADE_ADAPTER_ABI = [
+  { type: "error", name: "NotMyPayout", inputs: [] },
+  { type: "error", name: "SameAsset", inputs: [] },
+  { type: "error", name: "NothingToTrade", inputs: [] },
+  { type: "error", name: "ApprovalFailed", inputs: [] },
+  { type: "error", name: "RefundFailed", inputs: [] },
+  {
+    type: "function",
+    name: "trade",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "p",
+        type: "tuple",
+        components: [
+          { name: "spend", type: "tuple", components: SPEND_COMPONENTS },
+          { name: "spendCiphertexts", type: "bytes[2]" },
+          { name: "spendProof", type: "bytes" },
+          { name: "tokenOut", type: "uint256" },
+          { name: "amountOut", type: "uint256" },
+          { name: "poolFee", type: "uint24" },
+          { name: "shieldCommitment", type: "bytes32" },
+          { name: "shieldNewRoot", type: "bytes32" },
+          { name: "shieldCiphertext", type: "bytes" },
+          { name: "shieldProof", type: "bytes" },
+        ],
+      },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const QUOTER_ABI = [
+  {
+    type: "function",
+    name: "quoteExactOutputSingle",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "tokenIn", type: "address" },
+          { name: "tokenOut", type: "address" },
+          { name: "amount", type: "uint256" },
+          { name: "fee", type: "uint24" },
+          { name: "sqrtPriceLimitX96", type: "uint160" },
+        ],
+      },
+    ],
+    outputs: [
+      { name: "amountIn", type: "uint256" },
+      { name: "sqrtPriceX96After", type: "uint160" },
+      { name: "initializedTicksCrossed", type: "uint32" },
+      { name: "gasEstimate", type: "uint256" },
+    ],
+  },
+] as const;
+
+/** Everything CowlTradeAdapter.trade takes, client-shaped. */
+export type TradeSubmission = {
+  spend: SpendStruct;
+  spendCiphertexts: [`0x${string}`, `0x${string}`];
+  spendProof: `0x${string}`;
+  tokenOut: bigint;
+  amountOut: bigint;
+  poolFee: number;
+  shieldCommitment: `0x${string}`;
+  shieldNewRoot: `0x${string}`;
+  shieldCiphertext: `0x${string}`;
+  shieldProof: `0x${string}`;
+};
+
+export function adapterAddress(net: NetworkDef): Address | null {
+  return net.contracts.tradeAdapter ?? null;
+}
+
+/**
+ * The venue leg of a pool token field: native trades through WETH, an ERC-20
+ * trades as itself. The circuit's zero field never reaches the router.
+ */
+export function venueLeg(net: NetworkDef, tokenField: bigint): Address {
+  if (tokenField === 0n) {
+    const weth = net.contracts.weth;
+    if (!weth) throw new Error(`No WETH configured on ${net.label}.`);
+    return weth;
+  }
+  return fieldToAddress(tokenField);
+}
+
+/** Ask the venue quoter what an exact output costs, as a free eth_call. */
+export async function quoteExactOutput(
+  net: NetworkDef,
+  tokenIn: Address,
+  tokenOut: Address,
+  amountOut: bigint,
+): Promise<bigint> {
+  const quoter = net.contracts.quoter;
+  if (!quoter) throw new Error(`No trade venue on ${net.label}.`);
+  const { result } = await publicClient.simulateContract({
+    address: quoter,
+    abi: QUOTER_ABI,
+    functionName: "quoteExactOutputSingle",
+    args: [{ tokenIn, tokenOut, amount: amountOut, fee: net.contracts.feeTier ?? 3000, sqrtPriceLimitX96: 0n }],
+  });
+  return result[0];
+}
+
+function tradeArgs(t: TradeSubmission) {
+  return [
+    {
+      spend: {
+        membershipRoot: t.spend.membershipRoot,
+        nullifiers: [t.spend.nullifiers[0], t.spend.nullifiers[1]] as readonly [`0x${string}`, `0x${string}`],
+        commitments: [t.spend.commitments[0], t.spend.commitments[1]] as readonly [`0x${string}`, `0x${string}`],
+        newRoot: t.spend.newRoot,
+        token: t.spend.token,
+        value: t.spend.value,
+        fee: t.spend.fee,
+        recipient: fieldToAddress(t.spend.recipient),
+        relayer: fieldToAddress(t.spend.relayer),
+      },
+      spendCiphertexts: [t.spendCiphertexts[0], t.spendCiphertexts[1]] as readonly [`0x${string}`, `0x${string}`],
+      spendProof: t.spendProof,
+      tokenOut: t.tokenOut,
+      amountOut: t.amountOut,
+      poolFee: t.poolFee,
+      shieldCommitment: t.shieldCommitment,
+      shieldNewRoot: t.shieldNewRoot,
+      shieldCiphertext: t.shieldCiphertext,
+      shieldProof: t.shieldProof,
+    },
+  ] as const;
+}
+
+/** Dry-run a trade against current state — free, and how a relayer vets one. */
+export async function simulateTrade(from: Address, t: TradeSubmission): Promise<void> {
+  const net = activeNetwork();
+  const adapter = adapterAddress(net);
+  if (!adapter) throw new Error(`No trade adapter deployed on ${net.label}.`);
+  await publicClient.simulateContract({
+    account: from,
+    address: adapter,
+    abi: TRADE_ADAPTER_ABI,
+    functionName: "trade",
+    args: tradeArgs(t),
+  });
+}
+
+/** Submit an atomic private trade through the connected wallet. */
+export async function submitTrade(wallet: WalletClient, t: TradeSubmission): Promise<SpendReceipt> {
+  const net = activeNetwork();
+  const adapter = adapterAddress(net);
+  if (!adapter) throw new Error(`No trade adapter deployed on ${net.label}.`);
+  const account = wallet.account;
+  if (!account) throw new Error("Connect a wallet first.");
+
+  const hash = await wallet.writeContract({
+    account,
+    chain: toViemChain(net),
+    address: adapter,
+    abi: TRADE_ADAPTER_ABI,
+    functionName: "trade",
+    args: tradeArgs(t),
+  });
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error(`Trade transaction reverted (${hash}).`);
+  const pool = poolAddress(net);
+  return {
+    hash,
+    gasUsed: receipt.gasUsed,
+    blockNumber: receipt.blockNumber,
+    outputs: pool ? readAllNoteCommitted(receipt, pool) : [],
+  };
+}
+
 const ERC20_APPROVE_ABI = [
   { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] },
   { type: "function", name: "allowance", stateMutability: "view", inputs: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }], outputs: [{ type: "uint256" }] },

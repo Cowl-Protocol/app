@@ -52,9 +52,20 @@ import {
 } from "@/lib/shielded/pool";
 import { loadPool, loadWallet, savePool, saveWallet } from "@/lib/shielded/store";
 import { syncShieldedPool } from "@/lib/shielded/sync";
-import { approvePool, fieldToAddress, simulateSpend, submitShield, submitSpend } from "@/lib/shielded/contract";
+import {
+  approvePool,
+  fieldToAddress,
+  quoteExactOutput,
+  simulateSpend,
+  simulateTrade,
+  submitShield,
+  submitSpend,
+  submitTrade,
+  venueLeg,
+  type TradeSubmission,
+} from "@/lib/shielded/contract";
 import { proveShieldOffThread, proveTransferOffThread } from "@/lib/shielded/prover";
-import { relaySpend, tryQuote } from "@/lib/relay";
+import { relaySpend, relayTrade, tryQuote } from "@/lib/relay";
 
 const net = activeNetwork();
 
@@ -66,7 +77,7 @@ export type OpStep = "unlock" | "wait" | "sync" | "prove" | "confirm" | "mined" 
 export type PartTx = { hash: string; part: number };
 
 export type OpProgress = {
-  op: "shield" | "unshield" | "send";
+  op: "shield" | "unshield" | "send" | "trade";
   symbol: string;
   decimals: number;
   parts: bigint[];
@@ -157,6 +168,25 @@ type ShieldedContextValue = {
     symbol: string;
     decimals: number;
     /** Submit from the wallet, no relayer fee — see unshieldExec. */
+    selfPay?: boolean;
+  }) => Promise<void>;
+  /**
+   * Swap shielded value through the venue, atomically.
+   *
+   * One adapter call carries two chained proofs: a spend whose payout leg names
+   * the adapter, and a shield for the exact output, proven against the root the
+   * spend leaves behind. The trade is exact-output — `amountOut` is fixed and
+   * the spend's value is the input cap the router may draw up to.
+   */
+  tradeExec: (args: {
+    /** Exactly what arrives, in the out token's base units. */
+    amountOut: bigint;
+    tokenOutField: bigint;
+    outSymbol: string;
+    outDecimals: number;
+    /** The input side — native unless the output is native (then USDG). */
+    tokenInField: bigint;
+    /** Submit from the wallet — the input cap gains 1% headroom, refunded to it. */
     selfPay?: boolean;
   }) => Promise<void>;
 };
@@ -754,6 +784,181 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   );
 
   /**
+   * The private trade, ported from the CLI's tradeOnChain and shaped like the
+   * spends above: sync, quote, prove, dry-run, submit, record.
+   *
+   * The venue is priced inside the run, seconds before proving, not when the
+   * card was drawn — the spend's value is the swap's hard input cap, fixed at
+   * proving time, and a quote gone stale by minutes is the difference between a
+   * trade and a revert. Self-submitted, the cap gains 1% of headroom and the
+   * adapter refunds whatever the router does not draw to the submitter — the
+   * trader's own wallet. Relayed, the cap stays at the bare quote, because that
+   * same refund would land on the relayer as a stray tip instead.
+   */
+  const tradeExec = useCallback<ShieldedContextValue["tradeExec"]>(
+    async ({ amountOut, tokenOutField, outSymbol, outDecimals, tokenInField, selfPay = false }) => {
+      const wc = walletClientRef.current;
+      if (!wc?.account) throw new Error("Connect a wallet first.");
+      const adapter = net.contracts.tradeAdapter;
+      if (!adapter) throw new Error(`No trade venue on ${net.label}.`);
+
+      let relayed = false;
+      const prog: OpProgress = {
+        op: "trade",
+        symbol: outSymbol,
+        decimals: outDecimals,
+        parts: [amountOut],
+        current: 0,
+        step: "unlock",
+        txs: [],
+        done: false,
+      };
+      const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
+      publish();
+
+      try {
+        const k = await ensureKeys();
+        for (let attempt = 0; ; attempt++) {
+          prog.step = "sync";
+          publish();
+          const sync = await syncShieldedPool();
+          if (!sync) throw new Error(`No shielded pool on ${net.label}.`);
+          const wallet = loadWallet(net.key, k);
+          applyScan(sync.pool, wallet, k);
+          saveWallet(net.key, k, wallet);
+
+          // Gasless is the default here too, and worth the most on a trade: the
+          // fee comes out of the notes being spent and the relayer submits, so
+          // no wallet of yours appears anywhere near the swap. A relayer that
+          // is down yields null and the wallet takes over — with the headroom
+          // rule flipping to match, since the refund then goes home.
+          const quote = selfPay
+            ? null
+            : await tryQuote(
+                net.defaultRelay,
+                net.chainId,
+                net.contracts.pool!,
+                tokenInField === 0n ? undefined : (fieldToAddress(tokenInField) as `0x${string}`),
+                "trade",
+              );
+          if (relayed !== !!quote) {
+            relayed = !!quote;
+            prog.relayed = relayed;
+          }
+
+          const quotedIn = await quoteExactOutput(
+            net,
+            venueLeg(net, tokenInField),
+            venueLeg(net, tokenOutField),
+            amountOut,
+          );
+          const maxIn = quotedIn + (quote ? 0n : quotedIn / 100n);
+
+          // Leg one: unshield maxIn + fee to the adapter, change back to us.
+          const planned = planUnshield(
+            sync.pool,
+            wallet,
+            k,
+            maxIn,
+            tokenInField,
+            BigInt(adapter),
+            BigInt(net.chainId),
+            quote?.fee ?? 0n,
+            quote ? BigInt(quote.relayer) : 0n,
+          );
+
+          prog.step = "prove";
+          publish();
+          const spendProof = await proveTransferOffThread(planned.plan);
+          const spendCiphertexts: [`0x${string}`, `0x${string}`] = [
+            packCipher(encryptNote(planned.outputs[0]!.note, planned.outputs[0]!.viewPubHex)),
+            packCipher(encryptNote(planned.outputs[1]!.note, planned.outputs[1]!.viewPubHex)),
+          ];
+
+          // Leg two: shield the exact output, proven against the root leg one
+          // makes. The chain assert is what makes the atomicity real on the
+          // client side — a tree that moved between the two provings would
+          // produce a shield the pool must reject.
+          const leavesAfter = [
+            ...sync.pool.commitments.map(hexToField),
+            hexToField(spendProof.spend.commitments[0]),
+            hexToField(spendProof.spend.commitments[1]),
+          ];
+          const outNote = newNote(amountOut, tokenOutField, k.mpk);
+          const outCommitment = commitment(outNote);
+          const at = appendProof(leavesAfter, outCommitment);
+          if (fieldToHex(at.oldRoot) !== spendProof.spend.newRoot) {
+            throw new Error("The trade legs do not chain — resync and retry.");
+          }
+          const shieldProof = await proveShieldOffThread(outNote, outCommitment, at);
+
+          const submission: TradeSubmission = {
+            spend: spendProof.spend,
+            spendCiphertexts,
+            spendProof: spendProof.proof,
+            tokenOut: tokenOutField,
+            amountOut,
+            poolFee: net.contracts.feeTier ?? 3000,
+            shieldCommitment: fieldToHex(outCommitment) as `0x${string}`,
+            shieldNewRoot: fieldToHex(at.newRoot) as `0x${string}`,
+            shieldCiphertext: packCipher(encryptNote(outNote, k.viewPubHex)),
+            shieldProof: shieldProof.proof,
+          };
+
+          // The output note's secrets survive a dying tab: stash before broadcast.
+          const w1 = loadWallet(net.key, k);
+          stashPendingNote(w1, outNote);
+          saveWallet(net.key, k, w1);
+
+          prog.step = "confirm";
+          publish();
+          try {
+            // Free dry-run as whoever will actually submit. A stale root, a
+            // spent note, or a venue that ticked past the input cap all reject
+            // here — before a wallet confirmation, with nothing broadcast —
+            // and the retry loop re-quotes against the price that moved.
+            await simulateTrade(quote ? quote.relayer : wc.account.address, submission);
+            const receipt = quote
+              ? await relayTrade(net.defaultRelay!, submission)
+              : await submitTrade(wc, submission);
+
+            prog.step = "mined";
+            prog.txs.push({ hash: receipt.hash, part: 0 });
+            publish();
+
+            prog.step = "record";
+            publish();
+            try {
+              const after = await withDeadline(syncShieldedPool(), RECORD_DEADLINE);
+              if (after) {
+                const w2 = loadWallet(net.key, k);
+                recordMyNote(after.pool, w2, k, outNote, at.leafIndex);
+                savePool(net.key, after.pool);
+                saveWallet(net.key, k, w2);
+              }
+            } catch {
+              // The note stays pending; a later scan adopts it by commitment.
+            }
+            break;
+          } catch (e) {
+            if (isStaleRoot(e) && attempt < 2) continue; // root or price moved — replan both legs
+            throw e;
+          }
+        }
+
+        scanAndPublish(k);
+        prog.done = true;
+        publish();
+      } catch (e) {
+        prog.error = opError(e);
+        publish();
+        throw e;
+      }
+    },
+    [ensureKeys, scanAndPublish],
+  );
+
+  /**
    * Merge the two largest notes, over and over, until a spend of `target` fits
    * in two. Each round is an ordinary join-split back to yourself.
    *
@@ -926,6 +1131,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       shieldExec,
       unshieldExec,
       sendExec,
+      tradeExec,
       consolidateExec,
     }),
     [
@@ -943,6 +1149,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       shieldExec,
       unshieldExec,
       sendExec,
+      tradeExec,
       consolidateExec,
     ],
   );

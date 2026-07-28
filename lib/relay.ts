@@ -13,7 +13,7 @@
 // JSON carries bigints as decimal strings and bytes as 0x-hex.
 import { useEffect, useState } from "react";
 import { activeNetwork } from "./networks";
-import { fieldToAddress } from "./shielded/contract";
+import { fieldToAddress, type TradeSubmission } from "./shielded/contract";
 import type { SpendStruct } from "./shielded/prove";
 
 export type RelayQuote = {
@@ -72,14 +72,21 @@ const big = (v: unknown, what: string): bigint => {
 
 const clean = (url: string) => url.replace(/\/+$/, "");
 
+/** What the relayer is being asked to carry — a trade burns twice the gas of a
+ * plain spend, so its fee is sized from a different constant. */
+export type RelayOp = "spend" | "trade";
+
 /**
  * Ask a relayer what it charges and where its fee should be paid.
  *
  * Pass a token address to have the fee priced in that ERC-20, since the fee leg
  * of a spend pays in the spend's own token.
  */
-export async function fetchQuote(url: string, token?: `0x${string}`): Promise<RelayQuote> {
-  const qs = token ? `?token=${token}` : "";
+export async function fetchQuote(url: string, token?: `0x${string}`, op: RelayOp = "spend"): Promise<RelayQuote> {
+  const params = new URLSearchParams();
+  if (token) params.set("token", token);
+  if (op === "trade") params.set("op", "trade");
+  const qs = params.size ? `?${params.toString()}` : "";
   let res: Response;
   try {
     res = await fetch(`${clean(url)}/quote${qs}`);
@@ -132,6 +139,60 @@ export async function relaySpend(
   };
 }
 
+/** A TradeSubmission on the wire — bigints as decimal strings, bytes as 0x-hex.
+ * Mirror of the CLI's WireTrade (cli/src/relayer/client.ts). */
+type WireTrade = {
+  spend: WireSpend;
+  /** The spend's two output ciphers — named `ciphertexts` on the wire, as the daemon decodes it. */
+  ciphertexts: [`0x${string}`, `0x${string}`];
+  spendProof: `0x${string}`;
+  tokenOut: string;
+  amountOut: string;
+  poolFee: number;
+  shieldCommitment: `0x${string}`;
+  shieldNewRoot: `0x${string}`;
+  shieldCiphertext: `0x${string}`;
+  shieldProof: `0x${string}`;
+};
+
+export function encodeTrade(t: TradeSubmission): WireTrade {
+  return {
+    spend: encodeSpend(t.spend),
+    ciphertexts: t.spendCiphertexts,
+    spendProof: t.spendProof,
+    tokenOut: t.tokenOut.toString(),
+    amountOut: t.amountOut.toString(),
+    poolFee: t.poolFee,
+    shieldCommitment: t.shieldCommitment,
+    shieldNewRoot: t.shieldNewRoot,
+    shieldCiphertext: t.shieldCiphertext,
+    shieldProof: t.shieldProof,
+  };
+}
+
+/** Hand a proven trade to the relayer and wait for its receipt. */
+export async function relayTrade(url: string, t: TradeSubmission): Promise<RelayReceipt> {
+  let res: Response;
+  try {
+    res = await fetch(`${clean(url)}/trade`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(encodeTrade(t)),
+    });
+  } catch {
+    throw new Error(`No relayer answering at ${url}.`);
+  }
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(typeof body.error === "string" ? body.error : `Relayer rejected the trade (${res.status}).`);
+  }
+  return {
+    hash: hex(body.hash, "hash"),
+    gasUsed: big(body.gasUsed, "gasUsed"),
+    blockNumber: big(body.blockNumber, "blockNumber"),
+  };
+}
+
 /**
  * A quote worth using, or nothing.
  *
@@ -145,10 +206,11 @@ export async function tryQuote(
   chainId: number,
   pool: `0x${string}`,
   token?: `0x${string}`,
+  op: RelayOp = "spend",
 ): Promise<RelayQuote | null> {
   if (!url) return null;
   try {
-    const q = await fetchQuote(url, token);
+    const q = await fetchQuote(url, token, op);
     if (q.chainId !== chainId) return null;
     if (q.pool.toLowerCase() !== pool.toLowerCase()) return null;
     return q;
@@ -169,6 +231,7 @@ export async function tryQuote(
 export function useRelayQuote(
   tokenField: bigint | null,
   enabled: boolean,
+  op: RelayOp = "spend",
 ): { quote: RelayQuote | null; checking: boolean } {
   const [quote, setQuote] = useState<RelayQuote | null>(null);
   const [checking, setChecking] = useState(false);
@@ -187,6 +250,7 @@ export function useRelayQuote(
       net.chainId,
       net.contracts.pool,
       tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`),
+      op,
     ).then((q) => {
       if (!alive) return;
       setQuote(q);
@@ -195,7 +259,7 @@ export function useRelayQuote(
     return () => {
       alive = false;
     };
-  }, [tokenField, enabled]);
+  }, [tokenField, enabled, op]);
 
   return { quote, checking };
 }
@@ -217,7 +281,11 @@ export const GAS_PER_SPEND = 4_450_000n;
  * no number beside it is not a price. An estimate is honest here — the gas
  * price moves between now and the transaction — so it is labelled as one.
  */
-export function useSelfGasEstimate(parts: number, enabled: boolean): bigint | null {
+export function useSelfGasEstimate(
+  parts: number,
+  enabled: boolean,
+  gasUnits: bigint = GAS_PER_SPEND,
+): bigint | null {
   const [wei, setWei] = useState<bigint | null>(null);
 
   useEffect(() => {
@@ -230,7 +298,7 @@ export function useSelfGasEstimate(parts: number, enabled: boolean): bigint | nu
       try {
         const { publicClient } = await import("./useWallet");
         const price = await publicClient.getGasPrice();
-        if (alive) setWei(price * GAS_PER_SPEND * BigInt(parts));
+        if (alive) setWei(price * gasUnits * BigInt(parts));
       } catch {
         // No estimate is better than a made-up one; the row simply stays away.
         if (alive) setWei(null);
@@ -239,7 +307,7 @@ export function useSelfGasEstimate(parts: number, enabled: boolean): bigint | nu
     return () => {
       alive = false;
     };
-  }, [parts, enabled]);
+  }, [parts, enabled, gasUnits]);
 
   return wei;
 }

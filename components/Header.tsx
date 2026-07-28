@@ -10,8 +10,8 @@ import type { useWallet } from "@/lib/useWallet";
 
 type WalletState = ReturnType<typeof useWallet>;
 
-const LINKS = [
-  { href: "/", label: "Swap", soon: true },
+const LINKS: { href: string; label: string; soon?: boolean }[] = [
+  { href: "/", label: "Swap" },
   { href: "/shield", label: "Shield" },
   { href: "/send", label: "Send" },
   { href: "/receive", label: "Receive" },

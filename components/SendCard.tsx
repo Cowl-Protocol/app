@@ -850,7 +850,7 @@ function Row({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
  * recipient, no amount leaving. What it needs to show is that transactions are
  * going out, how many are left, and that the wallet is about to ask.
  */
-function MergeProgressModal({
+export function MergeProgressModal({
   symbol,
   progress,
   onClose,

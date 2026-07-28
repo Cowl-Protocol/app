@@ -14,6 +14,8 @@ export type CowlContracts = {
   swapRouter?: `0x${string}`;
   quoter?: `0x${string}`;
   tradeAdapter?: `0x${string}`;
+  /** Uniswap V3 fee tier the trade route uses. Unset means 3000 (0.3%). */
+  feeTier?: number;
   relayer?: `0x${string}`;
 };
 
@@ -31,6 +33,12 @@ export type NetworkDef = {
    */
   rpcUrls: string[];
   defaultRelay?: string;
+  /**
+   * Gas one atomic trade needs (mirror of the CLI's NetworkDef.tradeGas). The
+   * relayer prices a trade fee from this same figure, so the two sides of the
+   * gas-payer choice quote from one number here too.
+   */
+  tradeGas?: bigint;
   explorer: string;
   currency: { name: string; symbol: string; decimals: number };
   testnet: boolean;
@@ -48,6 +56,8 @@ export const NETWORKS: Record<string, NetworkDef> = {
       "https://rpc.testnet.chain.robinhood.com",
     ],
     defaultRelay: "https://relay.cowlprotocol.com",
+    // The test venue's V3 stand-in burns more than the real thing.
+    tradeGas: 15_000_000n,
     explorer: "https://explorer.testnet.chain.robinhood.com",
     currency: { name: "Ether", symbol: "ETH", decimals: 18 },
     testnet: true,
@@ -79,6 +89,8 @@ export const NETWORKS: Record<string, NetworkDef> = {
     // behind a path on the same host rather than a second DNS name. A quote
     // that comes back naming another chain or another pool is discarded.
     defaultRelay: "https://relay.cowlprotocol.com/mainnet",
+    // The first real-money trade burned 8,599,108; this sits just above it.
+    tradeGas: 9_000_000n,
     explorer: "https://robinhoodchain.blockscout.com",
     currency: { name: "Ether", symbol: "ETH", decimals: 18 },
     testnet: false,
@@ -92,6 +104,8 @@ export const NETWORKS: Record<string, NetworkDef> = {
       swapRouter: "0xCaf681a66D020601342297493863E78C959E5cb2",
       quoter: "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7",
       tradeAdapter: "0x0b86f9d1D2E0Abc8ab7C7BE39498855E8F4a3A98",
+      // The deepest WETH/USDG pool on pons sits at 0.05%.
+      feeTier: 500,
     },
   },
 };

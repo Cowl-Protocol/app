@@ -22,6 +22,7 @@ import { tiersFor } from "@/lib/denominations";
 import { useRelayQuote, useSelfGasEstimate } from "@/lib/relay";
 import { tradeInputFor, useTradeQuote } from "@/lib/trade";
 import { activeNetwork } from "@/lib/networks";
+import { useAssets, useShieldedAssets } from "@/lib/assets";
 import type { useWallet } from "@/lib/useWallet";
 import { useShielded } from "./ShieldedProvider";
 import SwapConfirmModal from "./SwapConfirmModal";
@@ -61,7 +62,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const [exact, setExact] = useState(false);
   const [selfPay, setSelfPay] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [picking, setPicking] = useState(false);
+  const [picking, setPicking] = useState<null | "pay" | "receive">(null);
   const [merging, setMerging] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
@@ -112,6 +113,19 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   // What the book already holds of the receive side — after a swap lands, this
   // is the line that visibly ticks up with the fresh note.
   const receiveBal = unlocked ? shielded.balanceOf(outField) : 0n;
+
+  // The public book, borrowed only to name and price what the shielded one
+  // holds — the same modal rows the send card shows. The pay picker offers the
+  // shielded book filtered to what can actually fund a route: native or USDG.
+  const { assets: publicAssets } = useAssets(wallet.address as `0x${string}` | null);
+  const { assets: shieldedAssets, loading: shieldedLoading } = useShieldedAssets(
+    unlocked ? shielded.balances : [],
+    publicAssets,
+  );
+  const usdgField = net.contracts.usdg ? BigInt(net.contracts.usdg) : 0n;
+  const payAssets = shieldedAssets.filter(
+    (a) => a.token.native || (!/^0x0{40}$/i.test(a.token.address) && BigInt(a.token.address) === usdgField),
+  );
 
   const overBalance = priced && unlocked && drawn > balance;
   // A join-split reads two notes at most; merging lifts the ceiling.
@@ -207,6 +221,33 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
 
   const setTier = (t: bigint) => setAmount(formatUnits(t, receive.decimals));
 
+  /**
+   * Picking the pay side steers the route rather than fighting it: native
+   * funds a token purchase, so the receive side gets the dollar if it was
+   * native; the dollar only ever buys native back.
+   */
+  const pickPay = (t: Token) => {
+    const f = t.native ? 0n : BigInt(t.address);
+    if (f === 0n) {
+      if (receive.native) setReceive(tokenBySymbol("USDG"));
+    } else {
+      setReceive(tokenBySymbol("ETH"));
+    }
+    setAmount("");
+    setExact(false);
+    setSelfPay(false);
+    setPicking(null);
+  };
+
+  const pickReceive = (t: Token) => {
+    setReceive(t);
+    setAmount("");
+    setExact(false);
+    // A different pair is a different fee question — back to the default.
+    setSelfPay(false);
+    setPicking(null);
+  };
+
   return (
     <div className="w-full max-w-[460px] mx-auto">
       {/* Card */}
@@ -246,10 +287,14 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               value={priced ? fmtIn(quotedIn, inMeta.decimals) : ""}
               readOnly
             />
-            <span className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2">
+            <button
+              onClick={() => setPicking("pay")}
+              className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2 transition-colors hover:bg-[#1c2027]"
+            >
               <TokenGlyph symbol={inMeta.symbol} src={logoFor(inField)} />
               <span className="label-mono text-[0.78rem] text-bone">{inMeta.symbol}</span>
-            </span>
+              <span className="text-faint text-xs">▾</span>
+            </button>
           </div>
           {priced && !gasless && maxIn > quotedIn && (
             <div className="mt-2 text-[0.7rem] text-faint font-data">
@@ -291,7 +336,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
             />
             <button
-              onClick={() => setPicking(true)}
+              onClick={() => setPicking("receive")}
               className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2 transition-colors hover:bg-[#1c2027]"
             >
               <TokenGlyph symbol={receive.symbol} src={receive.logoURI} />
@@ -522,21 +567,37 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           : "One wallet signature derives your shielded keys — trades settle from your shielded balance."}
       </p>
 
-      {/* The picker chooses what arrives; the pay side follows the route. */}
+      {/* The pay picker offers the shielded book, the way the send card does —
+          a token with no note behind it cannot fund a trade. Before unlock it
+          falls back to the two tokens a route can start from. */}
+      {unlocked ? (
+        <TokenModal
+          open={picking === "pay"}
+          assets={payAssets}
+          assetsLoading={shieldedLoading}
+          emptyNote="Nothing shielded to pay with yet. Shield ETH or USDG and it appears here."
+          onClose={() => setPicking(null)}
+          onSelect={pickPay}
+        />
+      ) : (
+        <TokenModal
+          open={picking === "pay"}
+          tokens={SWAP_TOKENS}
+          owner={wallet.address as `0x${string}` | null}
+          onClose={() => setPicking(null)}
+          onSelect={pickPay}
+        />
+      )}
+
+      {/* The receive picker chooses what arrives — curated list, search, and a
+          pasted ERC-20 imports the way it does everywhere else. */}
       <TokenModal
-        open={picking}
+        open={picking === "receive"}
         tokens={SWAP_TOKENS}
         allowImport
         owner={wallet.address as `0x${string}` | null}
-        onClose={() => setPicking(false)}
-        onSelect={(t) => {
-          setReceive(t);
-          setAmount("");
-          setExact(false);
-          // A different pair is a different fee question — back to the default.
-          setSelfPay(false);
-          setPicking(false);
-        }}
+        onClose={() => setPicking(null)}
+        onSelect={pickReceive}
       />
 
       <SwapConfirmModal

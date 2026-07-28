@@ -15,12 +15,12 @@
 // input headroom, refunded to the wallet that paid for it.
 import { useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
-import { TOKENS, tokenBySymbol, tokenMetaForField, type Token } from "@/lib/tokens";
+import { TOKENS, tokenBySymbol, type Token } from "@/lib/tokens";
 import { formatBalanceShort, formatUnitsExact, usdOf } from "@/lib/prices";
 import { useTokenPrice } from "@/lib/tokenPrice";
 import { tiersFor } from "@/lib/denominations";
 import { useRelayQuote, useSelfGasEstimate } from "@/lib/relay";
-import { tradeInputFor, useTradeQuote } from "@/lib/trade";
+import { useTradeQuote } from "@/lib/trade";
 import { activeNetwork } from "@/lib/networks";
 import { useAssets, useShieldedAssets } from "@/lib/assets";
 import { explainError } from "@/lib/errors";
@@ -58,6 +58,10 @@ function fmtIn(v: bigint, decimals: number): string {
 
 export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const shielded = useShielded();
+  // Both sides are real picks. The one rule is that a side of every route is
+  // native — the venue's liquidity stands against WETH — so the pickers keep
+  // the pair legal rather than a derivation forcing the pay side.
+  const [payToken, setPayToken] = useState<Token>(tokenBySymbol("ETH"));
   const [receive, setReceive] = useState<Token>(tokenBySymbol("USDG"));
   const [amount, setAmount] = useState("");
   const [exact, setExact] = useState(false);
@@ -71,8 +75,8 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const unlocked = shielded.status === "ready";
 
   const outField = receive.native ? 0n : BigInt(receive.address);
-  const inField = tradeInputFor(outField);
-  const inMeta = tokenMetaForField(inField);
+  const inField = payToken.native ? 0n : BigInt(payToken.address);
+  const inMeta = { symbol: payToken.symbol, decimals: payToken.decimals };
 
   // Whichever side was typed last is the anchor; the venue computes the other.
   // The protocol itself is always exact-output — a pay-side anchor just asks
@@ -141,9 +145,11 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
     unlocked ? shielded.balances : [],
     publicAssets,
   );
-  const usdgField = net.contracts.usdg ? BigInt(net.contracts.usdg) : 0n;
+  // The whole book: anything shielded can try to fund a route, and the quoter
+  // is the judge of whether the venue prices it — an AAPL received privately
+  // sells to ETH the moment its pool exists, without this list knowing.
   const payAssets = shieldedAssets.filter(
-    (a) => a.token.native || (!/^0x0{40}$/i.test(a.token.address) && BigInt(a.token.address) === usdgField),
+    (a) => a.token.native || !/^0x0{40}$/i.test(a.token.address),
   );
 
   const overBalance = priced && unlocked && drawn > balance;
@@ -160,8 +166,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
 
   const price = useTokenPrice(receive);
   const usd = usdOf(parseFloat(receiveDisplay) || 0, price);
-  const payPriceToken = tokenBySymbol(inField === 0n ? "ETH" : "USDG");
-  const payPrice = useTokenPrice(payPriceToken);
+  const payPrice = useTokenPrice(payToken);
   const payUsd = usdOf(parseFloat(payDisplay) || 0, payPrice);
 
   // The venue's price per whole token, for the rate row.
@@ -197,7 +202,11 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   if (overSendable) label = "Merge notes first";
 
   const flip = () => {
-    setReceive(receive.native ? tokenBySymbol("USDG") : tokenBySymbol("ETH"));
+    // A real swap of sides — selling AAPL to ETH flips to buying AAPL with
+    // ETH. The one-side-native invariant survives because it held before.
+    const p = payToken;
+    setPayToken(receive);
+    setReceive(p);
     setAmount("");
     setAnchor("receive");
   };
@@ -283,13 +292,13 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   };
 
   /**
-   * Picking the pay side steers the route rather than fighting it: native
-   * funds a token purchase, so the receive side gets the dollar if it was
-   * native; the dollar only ever buys native back.
+   * Picking either side keeps the pair legal: one side of every route is
+   * native, because the venue's liquidity stands against WETH. Pick a token
+   * to pay with and it sells to ETH; pick a token to receive and ETH buys it.
    */
   const pickPay = (t: Token) => {
-    const f = t.native ? 0n : BigInt(t.address);
-    if (f === 0n) {
+    setPayToken(t);
+    if (t.native) {
       if (receive.native) setReceive(tokenBySymbol("USDG"));
     } else {
       setReceive(tokenBySymbol("ETH"));
@@ -302,6 +311,11 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
 
   const pickReceive = (t: Token) => {
     setReceive(t);
+    if (t.native) {
+      if (payToken.native) setPayToken(tokenBySymbol("USDG"));
+    } else {
+      setPayToken(tokenBySymbol("ETH"));
+    }
     setAmount("");
     setExact(false);
     // A different pair is a different fee question — back to the default.
@@ -356,7 +370,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               onClick={() => pickOrUnlock("pay")}
               className="shrink-0 flex items-center gap-2 bg-ink3 pl-2 pr-3 py-2 transition-colors hover:bg-[#1c2027]"
             >
-              <TokenGlyph symbol={inMeta.symbol} src={logoFor(inField)} />
+              <TokenGlyph symbol={payToken.symbol} src={payToken.logoURI ?? logoFor(inField)} />
               <span className="label-mono text-[0.78rem] text-bone">{inMeta.symbol}</span>
               <span className="text-faint text-xs">▾</span>
             </button>
@@ -676,9 +690,10 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           to show. */}
       <TokenModal
         open={picking === "pay"}
+        title="Pay from your shielded book"
         assets={payAssets}
         assetsLoading={shieldedLoading}
-        emptyNote="Nothing shielded to pay with yet. Shield ETH or USDG and it appears here."
+        emptyNote="Nothing shielded to pay with yet. Shield something first and it appears here."
         onClose={() => setPicking(null)}
         onSelect={pickPay}
       />
@@ -697,7 +712,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
       <SwapConfirmModal
         open={confirming}
         paySymbol={inMeta.symbol}
-        payLogoURI={logoFor(inField)}
+        payLogoURI={payToken.logoURI ?? logoFor(inField)}
         receiveSymbol={receive.symbol}
         receiveLogoURI={receive.logoURI}
         amountOut={receiveDisplay || "0"}

@@ -127,6 +127,8 @@ type Lookup =
 
 type Props = {
   open: boolean;
+  /** Heading override — the fixed-list default says "Send", which is wrong for a swap's pay side. */
+  title?: string;
   exclude?: string;
   /** Curated list override — defaults to the swap list. */
   tokens?: Token[];
@@ -152,6 +154,7 @@ type Props = {
 
 export default function TokenModal({
   open,
+  title,
   exclude,
   tokens,
   assets: fixedAssets,
@@ -295,7 +298,7 @@ export default function TokenModal({
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <span className="label-mono text-[0.72rem] text-bone">
-            {fixed ? "Send from your shielded book" : "Select a token"}
+            {title ?? (fixed ? "Send from your shielded book" : "Select a token")}
           </span>
           <button onClick={onClose} className="text-faint hover:text-bone text-lg leading-none">
             ✕

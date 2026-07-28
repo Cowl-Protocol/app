@@ -96,6 +96,9 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const priced = tradeQuote.state === "priced";
   const quoteValue = priced ? tradeQuote.value : 0n;
   const feeTierUsed = priced ? tradeQuote.feeTier : null;
+  // Present when no direct pool pairs the two sides: the trade runs as two
+  // legs through native, and the screen owes that fact before the click.
+  const route = priced ? tradeQuote.route : undefined;
 
   const amountOut = anchor === "receive" ? typed : quoteValue;
   const payValue = anchor === "pay" ? typed : quoteValue;
@@ -123,7 +126,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const maxIn = payValue + (gasless ? 0n : payValue / 100n);
   const relayFee = gasless && relay ? relay.fee : 0n;
   const drawn = maxIn + relayFee;
-  const selfGas = useSelfGasEstimate(1, typed > 0n && !gasless, net.tradeGas ?? 15_000_000n);
+  const selfGas = useSelfGasEstimate(route ? 2 : 1, typed > 0n && !gasless, net.tradeGas ?? 15_000_000n);
 
   // The fee buys one trade's gas whatever the size, so its share shrinks as
   // the trade grows — a flat fee on a tiny swap is most of the swap, and only
@@ -292,31 +295,34 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   };
 
   /**
-   * Picking either side keeps the pair legal: one side of every route is
-   * native, because the venue's liquidity stands against WETH. Pick a token
-   * to pay with and it sells to ETH; pick a token to receive and ETH buys it.
+   * Any pair goes. One side native runs as a single trade; token→token runs
+   * as two trades routed through native, which the executor handles whole.
+   * Picking the token already on the other side flips, the way every venue
+   * treats it; the only pair refused is native against itself.
    */
   const pickPay = (t: Token) => {
-    setPayToken(t);
-    if (t.native) {
-      if (receive.native) setReceive(tokenBySymbol("USDG"));
+    const f = t.native ? 0n : BigInt(t.address);
+    if (f === outField) {
+      flip();
     } else {
-      setReceive(tokenBySymbol("ETH"));
+      setPayToken(t);
+      if (t.native && receive.native) setReceive(tokenBySymbol("USDG"));
+      setAmount("");
     }
-    setAmount("");
     setExact(false);
     setSelfPay(false);
     setPicking(null);
   };
 
   const pickReceive = (t: Token) => {
-    setReceive(t);
-    if (t.native) {
-      if (payToken.native) setPayToken(tokenBySymbol("USDG"));
+    const f = t.native ? 0n : BigInt(t.address);
+    if (f === inField) {
+      flip();
     } else {
-      setPayToken(tokenBySymbol("ETH"));
+      setReceive(t);
+      if (t.native && payToken.native) setPayToken(tokenBySymbol("USDG"));
+      setAmount("");
     }
-    setAmount("");
     setExact(false);
     // A different pair is a different fee question — back to the default.
     setSelfPay(false);
@@ -517,14 +523,19 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
             ) : (
               <>
                 {rate && <Row k="Rate" v={`1 ${receive.symbol} = ${rate} ${inMeta.symbol}`} />}
-                {feeTierUsed !== null && (
-                  <Row k="Route" v={`one hop · ${feeTierUsed / 10000}% pool`} />
+                {route ? (
+                  <Row
+                    k="Route"
+                    v={`two hops via ${net.currency.symbol} · ${route.tierIn / 10000}% + ${route.tierOut / 10000}%`}
+                  />
+                ) : (
+                  feeTierUsed !== null && <Row k="Route" v={`one hop · ${feeTierUsed / 10000}% pool`} />
                 )}
                 <Row k="Output" v="exact — proven before submitting" accent />
                 <Row k="Proving" v="In your browser" accent />
                 <Row
                   k="Wallet confirmations"
-                  v={relayChecking ? "…" : gasless ? "0" : "1"}
+                  v={relayChecking ? "…" : gasless ? "0" : route ? "2" : "1"}
                   accent={gasless}
                 />
                 {/* The same pair the CLI spells with --self. Relayed keeps this
@@ -593,6 +604,14 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
                   <p className="text-[0.7rem] text-faint leading-relaxed pt-1">
                     Your wallet submits this trade and pays its gas, so it shows on chain as the
                     caller. The notes that fund it stay sealed either way.
+                  </p>
+                )}
+                {route && (
+                  <p className="text-[0.7rem] text-faint leading-relaxed pt-1">
+                    No direct pool pairs these two, so this runs as two private trades through{" "}
+                    {net.currency.symbol}, back to back. In between, your value sits as shielded{" "}
+                    {net.currency.symbol}, and a sliver of {net.currency.symbol} change stays
+                    shielded when it lands{gasless ? " — each leg pays its own relayer fee" : ""}.
                   </p>
                 )}
               </>
@@ -727,6 +746,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
             ? `~${formatBalanceShort(selfGas, 18)} ${net.currency.symbol}`
             : undefined
         }
+        routed={!!route}
         progress={shielded.progress}
         onExecute={execute}
         onClose={closeConfirm}

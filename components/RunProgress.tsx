@@ -51,8 +51,8 @@ export default function RunProgress({ progress }: { progress: OpProgress }) {
   // Eight fraction digits on screen, the exact figure in the tooltip. A trade
   // output carries all eighteen, and at full width it shoved the status text
   // into a ragged wrap around the spinner.
-  const fmtPart = (v: bigint) => {
-    const [i, f = ""] = formatUnits(v, progress.decimals).split(".");
+  const fmtPart = (v: bigint, decimals: number) => {
+    const [i, f = ""] = formatUnits(v, decimals).split(".");
     const ff = f.slice(0, 8).replace(/0+$/, "");
     return ff ? `${i}.${ff}` : i;
   };
@@ -60,6 +60,7 @@ export default function RunProgress({ progress }: { progress: OpProgress }) {
   return (
     <>
       {progress.parts.map((p, i) => {
+        const unit = progress.partUnits?.[i] ?? { symbol: progress.symbol, decimals: progress.decimals };
         const tx = progress.txs.find((t) => t.part === i);
         // Filing happens after the money has moved, so the row keeps its hash
         // and the footer carries the fact that work is still going.
@@ -79,9 +80,9 @@ export default function RunProgress({ progress }: { progress: OpProgress }) {
               </span>
               <span
                 className="font-data text-sm text-bone whitespace-nowrap"
-                title={formatUnits(p, progress.decimals)}
+                title={formatUnits(p, unit.decimals)}
               >
-                {fmtPart(p)} {progress.symbol}
+                {fmtPart(p, unit.decimals)} {unit.symbol}
               </span>
             </span>
             <span className="text-right ml-auto whitespace-nowrap">

@@ -188,6 +188,17 @@ try {
     payAnchored.amount > 0n && payAnchored.feeTier === 10000,
     `0.001 ETH buys ${payAnchored.amount} COWL units`,
   );
+
+  // Token→token has no direct pool, so the card routes it as two legs
+  // through native — both legs must price for the route to exist.
+  const AAPL = "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9";
+  const legA = await quoteBestExactInput(mainnet, AAPL, inLeg, 10n ** 16n); // 0.01 AAPL → ETH
+  const legB = await quoteBestExactInput(mainnet, inLeg, cowl, legA.amount); // that ETH → COWL
+  check(
+    "a token→token pair routes through native",
+    legA.amount > 0n && legB.amount > 0n,
+    `0.01 AAPL → ${legA.amount} wei → ${legB.amount} COWL units`,
+  );
 } catch (e) {
   check("the venue quoter answers", false, (e as Error).message.split("\n")[0]);
 }

@@ -32,6 +32,8 @@ type Props = {
   drawn?: string;
   /** Self-paid: the estimated gas the wallet is about to pay, formatted. */
   networkFee?: string;
+  /** Token→token: two trades through native, run back to back. */
+  routed?: boolean;
   progress: OpProgress | null;
   onExecute: () => void;
   onClose: () => void;
@@ -68,6 +70,7 @@ export default function SwapConfirmModal({
   relayFee,
   drawn,
   networkFee,
+  routed = false,
   progress,
   onExecute,
   onClose,
@@ -75,6 +78,10 @@ export default function SwapConfirmModal({
   if (!open) return null;
 
   const running = !!progress && !progress.done && !progress.error;
+  // A routed trade whose first leg landed must NOT run again from the top —
+  // that would sell the pay side twice. The value waits as shielded native;
+  // the way forward is a fresh swap of the remaining leg.
+  const partLanded = routed && !!progress?.error && (progress?.txs.length ?? 0) > 0;
 
   return (
     <div
@@ -140,6 +147,13 @@ export default function SwapConfirmModal({
             {progress.error && (
               <div className="pt-1">
                 <ErrorNotice message={progress.error} detail={progress.errorDetail} />
+                {partLanded && (
+                  <p className="text-[0.7rem] text-faint leading-relaxed pt-2">
+                    The first leg landed, so your value is safe as shielded ETH inside the pool.
+                    Close this and run a fresh ETH → {receiveSymbol} swap to finish the route —
+                    do not run the whole trade again.
+                  </p>
+                )}
               </div>
             )}
             {progress.done && (
@@ -158,10 +172,10 @@ export default function SwapConfirmModal({
                 </button>
               ) : progress.error ? (
                 <button
-                  onClick={onExecute}
+                  onClick={partLanded ? onClose : onExecute}
                   className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
                 >
-                  Try again
+                  {partLanded ? "Close" : "Try again"}
                 </button>
               ) : (
                 <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">
@@ -234,6 +248,13 @@ export default function SwapConfirmModal({
                 ? ", and the relayer submits, so no wallet of yours appears anywhere in it."
                 : ". Self-paid, your wallet submits the trade and shows as its caller."}
             </p>
+            {routed && (
+              <p className="text-[0.7rem] text-faint leading-relaxed">
+                No direct pool pairs these two, so this runs as two private trades through ETH,
+                back to back — sell, then buy. In between your value sits as shielded ETH, never
+                outside the pool, and a sliver of ETH change stays shielded when it lands.
+              </p>
+            )}
             <p className="text-[0.7rem] text-faint leading-relaxed">
               The price is the venue&apos;s at execution, re-quoted just before proving. If it moves
               past the input cap while the proof is being made, the trade fails closed — nothing is

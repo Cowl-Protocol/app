@@ -82,6 +82,9 @@ export type OpProgress = {
   symbol: string;
   decimals: number;
   parts: bigint[];
+  /** Per-part symbol/decimals when parts differ — a routed trade's ETH leg
+   * beside its token leg. Absent, every part reads the run's own unit. */
+  partUnits?: { symbol: string; decimals: number }[];
   current: number;
   step: OpStep;
   txs: PartTx[];
@@ -843,6 +846,13 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       const adapter = net.contracts.tradeAdapter;
       if (!adapter) throw new Error(`No trade venue on ${net.label}.`);
 
+      // A token→token pair routes as two trades through native: no direct
+      // pool exists and the adapter swaps one hop per trade. Leg A sells the
+      // pay side to ETH with a sliver of buffer for leg B's fee and the price
+      // moving between the legs; leg B buys the exact output. In between, the
+      // value sits as shielded ETH — never outside the pool.
+      const routed = tokenInField !== 0n && tokenOutField !== 0n;
+
       let relayed = false;
       const prog: OpProgress = {
         op: "trade",
@@ -857,9 +867,14 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
       publish();
 
-      try {
-        const k = await ensureKeys();
+      const runLeg = async (
+        part: number,
+        k: ShieldedKeys,
+        leg: { amountOut: bigint; tokenOutField: bigint; tokenInField: bigint },
+      ) => {
+        const { amountOut, tokenOutField, tokenInField } = leg;
         for (let attempt = 0; ; attempt++) {
+          prog.current = part;
           prog.step = "sync";
           publish();
           const sync = await syncShieldedPool();
@@ -967,7 +982,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
               : await submitTrade(wc, submission);
 
             prog.step = "mined";
-            prog.txs.push({ hash: receipt.hash, part: 0 });
+            prog.txs.push({ hash: receipt.hash, part });
             publish();
 
             prog.step = "record";
@@ -985,9 +1000,38 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             }
             break;
           } catch (e) {
-            if (isStaleRoot(e) && attempt < 2) continue; // root or price moved — replan both legs
+            if (isStaleRoot(e) && attempt < 2) continue; // root or price moved — replan the leg
             throw e;
           }
+        }
+      };
+
+      try {
+        const k = await ensureKeys();
+        if (routed) {
+          // Priced before anything runs: the ETH leg B needs, plus its fee
+          // when relayed, plus 1% for the price moving between the legs. The
+          // surplus survives as a small shielded ETH note — still yours.
+          const legB = await quoteBestExactOutput(
+            net,
+            venueLeg(net, 0n),
+            venueLeg(net, tokenOutField),
+            amountOut,
+          );
+          const feeB = selfPay
+            ? 0n
+            : ((await tryQuote(net.defaultRelay, net.chainId, net.contracts.pool!, undefined, "trade"))?.fee ?? 0n);
+          const ethNeeded = ((legB.amount + feeB) * 101n) / 100n;
+          prog.parts = [ethNeeded, amountOut];
+          prog.partUnits = [
+            { symbol: net.currency.symbol, decimals: 18 },
+            { symbol: outSymbol, decimals: outDecimals },
+          ];
+          publish();
+          await runLeg(0, k, { amountOut: ethNeeded, tokenOutField: 0n, tokenInField });
+          await runLeg(1, k, { amountOut, tokenOutField, tokenInField: 0n });
+        } else {
+          await runLeg(0, k, { amountOut, tokenOutField, tokenInField });
         }
 
         scanAndPublish(k);
@@ -999,7 +1043,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
         throw e;
       }
     },
-    [ensureKeys, scanAndPublish],
+    [ensureKeys, scanAndPublish, recordSync],
   );
 
   const planMerge = useCallback<ShieldedContextValue["planMerge"]>(

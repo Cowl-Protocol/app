@@ -109,6 +109,9 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
 
   const balance = unlocked ? shielded.balanceOf(inField) : 0n;
   const sendable = unlocked ? shielded.sendableOf(inField) : 0n;
+  // What the book already holds of the receive side — after a swap lands, this
+  // is the line that visibly ticks up with the fresh note.
+  const receiveBal = unlocked ? shielded.balanceOf(outField) : 0n;
 
   const overBalance = priced && unlocked && drawn > balance;
   // A join-split reads two notes at most; merging lifts the ceiling.
@@ -228,11 +231,11 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               You pay
             </span>
             {unlocked && (
-              <span
-                className="text-[0.7rem] text-faint font-data whitespace-nowrap"
-                title={`${formatUnitsExact(balance, inMeta.decimals)} ${inMeta.symbol} shielded`}
-              >
-                {formatBalanceShort(balance, inMeta.decimals)} {inMeta.symbol} shielded
+              <span className="flex items-center gap-2 text-[0.7rem] text-faint font-data whitespace-nowrap">
+                <span title={`${formatUnitsExact(balance, inMeta.decimals)} ${inMeta.symbol} shielded`}>
+                  {formatBalanceShort(balance, inMeta.decimals)} {inMeta.symbol} shielded
+                </span>
+                {shielded.syncing && <Spinner className="h-3 w-3 text-acid" />}
               </span>
             )}
           </div>
@@ -270,7 +273,14 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
         <div className="bg-ink2 p-4 my-1">
           <div className="flex items-center justify-between mb-2 gap-3">
             <span className="label-soft text-faint whitespace-nowrap">You receive · exact</span>
-            {usd && <span className="text-[0.7rem] text-faint font-data whitespace-nowrap">{usd}</span>}
+            {unlocked && (
+              <span
+                className="text-[0.7rem] text-faint font-data whitespace-nowrap"
+                title={`${formatUnitsExact(receiveBal, receive.decimals)} ${receive.symbol} shielded`}
+              >
+                {formatBalanceShort(receiveBal, receive.decimals)} {receive.symbol} shielded
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <input
@@ -289,6 +299,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               <span className="text-faint text-xs">▾</span>
             </button>
           </div>
+          {usd && <div className="mt-2 text-[0.7rem] text-faint font-data">{usd}</div>}
           {/* Shared sizes, stated before someone trips on them. The nudge is a
               way forward in both directions: the nearest tiers, or exact. */}
           {amountOut > 0n && !onTier && (

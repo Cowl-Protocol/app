@@ -48,9 +48,13 @@ export default function RunProgress({ progress }: { progress: OpProgress }) {
   }, [waitUntil]);
 
   const net = activeNetwork();
+  // Eight fraction digits on screen, the exact figure in the tooltip. A trade
+  // output carries all eighteen, and at full width it shoved the status text
+  // into a ragged wrap around the spinner.
   const fmtPart = (v: bigint) => {
-    const s = formatUnits(v, progress.decimals);
-    return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+    const [i, f = ""] = formatUnits(v, progress.decimals).split(".");
+    const ff = f.slice(0, 8).replace(/0+$/, "");
+    return ff ? `${i}.${ff}` : i;
   };
 
   return (
@@ -64,7 +68,7 @@ export default function RunProgress({ progress }: { progress: OpProgress }) {
         const isDone = !!tx;
         const failedHere = !!progress.error && i === progress.current;
         return (
-          <div key={i} className="bg-ink2 px-4 py-3 flex items-center justify-between gap-3">
+          <div key={i} className="bg-ink2 px-4 py-3 flex items-center justify-between gap-x-3 gap-y-1 flex-wrap">
             <span className="flex items-center gap-3 min-w-0">
               <span
                 className={`shrink-0 h-6 w-6 flex items-center justify-center label-mono text-[0.62rem] ${
@@ -73,11 +77,14 @@ export default function RunProgress({ progress }: { progress: OpProgress }) {
               >
                 {isDone ? "✓" : i + 1}
               </span>
-              <span className="font-data text-sm text-bone whitespace-nowrap">
+              <span
+                className="font-data text-sm text-bone whitespace-nowrap"
+                title={formatUnits(p, progress.decimals)}
+              >
                 {fmtPart(p)} {progress.symbol}
               </span>
             </span>
-            <span className="text-right min-w-0">
+            <span className="text-right ml-auto whitespace-nowrap">
               {isDone && tx ? (
                 <a
                   href={`${net.explorer}/tx/${tx.hash}`}

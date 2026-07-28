@@ -175,6 +175,18 @@ type ShieldedContextValue = {
     selfPay?: boolean;
   }) => Promise<void>;
   /**
+   * What a merge would cost, before anyone commits to it.
+   *
+   * Read from the cached book at today's fee — an estimate for the review
+   * screen, not a promise: the run itself re-reads the book and re-quotes per
+   * round. `rounds` is -1 when even a full merge cannot cover the target.
+   */
+  planMerge: (args: {
+    tokenField: bigint;
+    target: bigint;
+    selfPay?: boolean;
+  }) => Promise<{ rounds: number; fee: bigint }>;
+  /**
    * Swap shielded value through the venue, atomically.
    *
    * One adapter call carries two chained proofs: a spend whose payout leg names
@@ -990,6 +1002,26 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
     [ensureKeys, scanAndPublish],
   );
 
+  const planMerge = useCallback<ShieldedContextValue["planMerge"]>(
+    async ({ tokenField, target, selfPay = false }) => {
+      const k = await ensureKeys();
+      const pool = loadPool(net.key);
+      const wallet = loadWallet(net.key, k);
+      applyScan(pool, wallet, k);
+      const quote = selfPay
+        ? null
+        : await tryQuote(
+            net.defaultRelay,
+            net.chainId,
+            net.contracts.pool!,
+            tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`),
+          );
+      const fee = quote?.fee ?? 0n;
+      return { rounds: mergesNeeded(wallet, tokenField, target + fee, fee), fee };
+    },
+    [ensureKeys],
+  );
+
   /**
    * Merge the two largest notes, over and over, until a spend of `target` fits
    * in two. Each round is an ordinary join-split back to yourself.
@@ -1005,43 +1037,21 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       const wc = walletClientRef.current;
       if (!wc?.account) throw new Error("Connect a wallet first.");
 
-      const k = await ensureKeys();
-      const sync0 = await syncShieldedPool();
-      if (!sync0) throw new Error(`No shielded pool on ${net.label}.`);
-      const wallet0 = loadWallet(net.key, k);
-      applyScan(sync0.pool, wallet0, k);
-      saveWallet(net.key, k, wallet0);
-
-      const relayToken =
-        tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`);
-      // Self-paid rounds pay no fee from the notes, so the count is taken at
-      // fee zero and every round buys its full ceiling.
-      const quote0 = selfPay
-        ? null
-        : await tryQuote(net.defaultRelay, net.chainId, net.contracts.pool!, relayToken);
-
-      // Each relayed round pays a fee out of the pair it merges, so the count
-      // has to be taken against that fee or it reads low and the run stops
-      // short — the exact failure the screen's round number must not have.
-      // The send this clears the way for pays a fee out of the same spend, so
-      // the ceiling has to clear the payment AND that fee — quoted here so it is
-      // today's, not whatever the card last saw.
-      const rounds = mergesNeeded(wallet0, tokenField, target + (quote0?.fee ?? 0n), quote0?.fee ?? 0n);
-      if (rounds < 0) throw new Error("Even merged, this balance cannot cover that amount.");
-      if (rounds === 0) return;
-
-      // One "part" per round, so the modal counts them the way it counts parts.
-      let relayed = !!quote0;
+      // Published from the first moment: the pre-flight below is a chain sync
+      // and a fee quote, which can run long on the endpoint that serves
+      // history, and a modal with no progress to read looked frozen for all
+      // of it. It also used to fail silently — the pre-flight lives inside
+      // the try now, so its errors reach the screen like any other.
+      let relayed = false;
       const prog: OpProgress = {
         op: "unshield",
         symbol,
         decimals,
-        parts: Array.from({ length: rounds }, () => 0n),
+        parts: [],
         current: 0,
-        step: "unlock",
+        step: "sync",
         txs: [],
         done: false,
-        relayed,
       };
       const publish = () => setProgress({ ...prog, txs: [...prog.txs] });
       publish();
@@ -1056,6 +1066,41 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       const MAX_EXTRA_ROUNDS = 3;
 
       try {
+        const k = await ensureKeys();
+        const sync0 = await syncShieldedPool();
+        if (!sync0) throw new Error(`No shielded pool on ${net.label}.`);
+        const wallet0 = loadWallet(net.key, k);
+        applyScan(sync0.pool, wallet0, k);
+        saveWallet(net.key, k, wallet0);
+
+        const relayToken =
+          tokenField === 0n ? undefined : (fieldToAddress(tokenField) as `0x${string}`);
+        // Self-paid rounds pay no fee from the notes, so the count is taken at
+        // fee zero and every round buys its full ceiling.
+        const quote0 = selfPay
+          ? null
+          : await tryQuote(net.defaultRelay, net.chainId, net.contracts.pool!, relayToken);
+
+        // Each relayed round pays a fee out of the pair it merges, so the count
+        // has to be taken against that fee or it reads low and the run stops
+        // short — the exact failure the screen's round number must not have.
+        // The send this clears the way for pays a fee out of the same spend, so
+        // the ceiling has to clear the payment AND that fee — quoted here so it is
+        // today's, not whatever the card last saw.
+        const rounds = mergesNeeded(wallet0, tokenField, target + (quote0?.fee ?? 0n), quote0?.fee ?? 0n);
+        if (rounds < 0) throw new Error("Even merged, this balance cannot cover that amount.");
+        if (rounds === 0) {
+          // Nothing to do is a finished run, not a vanished one.
+          prog.done = true;
+          publish();
+          return;
+        }
+        relayed = !!quote0;
+        prog.relayed = relayed;
+        // One "part" per round, so the modal counts them the way it counts parts.
+        prog.parts = Array.from({ length: rounds }, () => 0n);
+        publish();
+
         merging: for (let i = 0; ; i++) {
           if (i >= rounds + MAX_EXTRA_ROUNDS) {
             throw new Error("Merging is not gaining ground — the relayer's fee is eating each round.");
@@ -1164,6 +1209,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       unshieldExec,
       sendExec,
       tradeExec,
+      planMerge,
       consolidateExec,
     }),
     [
@@ -1182,6 +1228,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       unshieldExec,
       sendExec,
       tradeExec,
+      planMerge,
       consolidateExec,
     ],
   );

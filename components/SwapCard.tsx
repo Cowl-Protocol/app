@@ -65,6 +65,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const [confirming, setConfirming] = useState(false);
   const [picking, setPicking] = useState<null | "pay" | "receive">(null);
   const [merging, setMerging] = useState(false);
+  const [mergePlan, setMergePlan] = useState<{ rounds: number; fee: bigint } | null>(null);
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const unlocked = shielded.status === "ready";
@@ -230,9 +231,18 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
 
   const merge = () => {
     shielded.clearProgress();
+    setMergePlan(null);
     setMerging(true);
     shielded
       // The input cap, not the full draw: the run quotes its own fee per round.
+      .planMerge({ tokenField: inField, target: maxIn, selfPay })
+      .then(setMergePlan)
+      .catch(() => setMergePlan({ rounds: -1, fee: 0n }));
+  };
+
+  const executeMerge = () => {
+    shielded.clearProgress();
+    shielded
       .consolidateExec({
         tokenField: inField,
         symbol: inMeta.symbol,
@@ -711,9 +721,14 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
       {merging && (
         <MergeProgressModal
           symbol={inMeta.symbol}
+          decimals={inMeta.decimals}
+          gasless={gasless}
+          plan={mergePlan}
           progress={shielded.progress}
+          onExecute={executeMerge}
           onClose={() => {
             setMerging(false);
+            setMergePlan(null);
             shielded.clearProgress();
           }}
         />

@@ -60,6 +60,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   const [confirming, setConfirming] = useState(false);
   const [picking, setPicking] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [mergePlan, setMergePlan] = useState<{ rounds: number; fee: bigint } | null>(null);
 
   /**
    * The recipient field grows to fit what is in it.
@@ -302,10 +303,20 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
   const merge = () => {
     if (!token) return;
     shielded.clearProgress();
+    setMergePlan(null);
     setMerging(true);
     shielded
       // The payment, not the draw: the run quotes the fee itself, per round, so
       // it merges against today's price rather than whatever this card last read.
+      .planMerge({ tokenField: token.field, target: value, selfPay })
+      .then(setMergePlan)
+      .catch(() => setMergePlan({ rounds: -1, fee: 0n }));
+  };
+
+  const executeMerge = () => {
+    if (!token) return;
+    shielded.clearProgress();
+    shielded
       .consolidateExec({ tokenField: token.field, symbol: token.symbol, decimals, target: value, selfPay })
       .catch(() => {});
   };
@@ -689,9 +700,14 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
       {token && merging && (
         <MergeProgressModal
           symbol={token.symbol}
+          decimals={decimals}
+          gasless={gasless}
+          plan={mergePlan}
           progress={shielded.progress}
+          onExecute={executeMerge}
           onClose={() => {
             setMerging(false);
+            setMergePlan(null);
             shielded.clearProgress();
           }}
         />
@@ -847,19 +863,31 @@ function Row({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
 }
 
 /**
- * The live view of a merge run.
+ * Review-then-run for a merge.
  *
  * Merging is not a payment, so it borrows nothing from the send modal: no
- * recipient, no amount leaving. What it needs to show is that transactions are
- * going out, how many are left, and that the wallet is about to ask.
+ * recipient, no amount leaving. What it owes the person is the bill up front —
+ * relayed rounds each pay a fee out of the notes being merged, so the review
+ * multiplies it out before anything runs — and then the live view: rounds
+ * going out, how many are left, whether the wallet is about to ask.
  */
 export function MergeProgressModal({
   symbol,
+  decimals,
+  gasless,
+  plan,
   progress,
+  onExecute,
   onClose,
 }: {
   symbol: string;
+  decimals: number;
+  /** A relayer is standing by and self-paid was not chosen. */
+  gasless: boolean;
+  /** The estimate planMerge answered, or null while it is still being read. */
+  plan: { rounds: number; fee: bigint } | null;
   progress: OpProgress | null;
+  onExecute: () => void;
   onClose: () => void;
 }) {
   const running = !!progress && !progress.done && !progress.error;
@@ -873,7 +901,9 @@ export function MergeProgressModal({
     >
       <div className="w-full max-w-sm bg-card fade-up" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
-          <span className="label-mono text-[0.72rem] text-bone">Merging notes</span>
+          <span className="label-mono text-[0.72rem] text-bone">
+            {progress ? "Merging notes" : "Review merge"}
+          </span>
           {!running && (
             <button onClick={onClose} className="text-faint hover:text-bone text-lg leading-none">
               ✕
@@ -881,6 +911,74 @@ export function MergeProgressModal({
           )}
         </div>
 
+        {!progress ? (
+          /* ---- review: the bill before the run ---- */
+          <div className="px-5 pb-5 space-y-3">
+            <p className="text-xs text-muted leading-relaxed">
+              Each round combines your two largest {symbol} notes into one, back to yourself,
+              lifting what a single payment can carry.
+            </p>
+            {!plan ? (
+              <p className="flex items-center gap-2 text-[0.7rem] text-muted leading-relaxed">
+                <Spinner className="h-3 w-3 text-acid" />
+                Counting the rounds against today&apos;s fee
+              </p>
+            ) : plan.rounds < 0 ? (
+              <>
+                <p className="text-xs text-[#ff6b6b] leading-relaxed">
+                  Even merged, this balance cannot cover that amount.
+                </p>
+                <button
+                  onClick={onClose}
+                  className="w-full label-mono text-sm py-4 bg-ink3 text-bone hover:bg-ink transition-colors"
+                >
+                  Close
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="bg-ink2 px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-faint font-data">Rounds</span>
+                    <span className="font-data text-bone">{plan.rounds}</span>
+                  </div>
+                  {gasless && plan.fee > 0n ? (
+                    <>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-faint font-data">Relayer fee, per round</span>
+                        <span className="font-data text-muted">
+                          {formatBalanceShort(plan.fee, decimals)} {symbol}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-faint font-data">Total fees</span>
+                        <span className="font-data text-acid">
+                          {formatBalanceShort(plan.fee * BigInt(plan.rounds), decimals)} {symbol}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-faint font-data">Wallet confirmations</span>
+                      <span className="font-data text-muted">{plan.rounds}, one per round</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[0.7rem] text-faint leading-relaxed">
+                  {gasless
+                    ? "Each round pays its own fee out of the notes being merged. The count is an estimate against today's fee — the run re-quotes per round and stops the moment the target fits."
+                    : "No fee leaves the notes. Your wallet submits each round and pays its gas."}
+                </p>
+                <button
+                  onClick={onExecute}
+                  className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
+                >
+                  Merge now
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
         <div className="px-5 pb-5 space-y-3">
           <p className="text-xs text-muted leading-relaxed">
             Each round combines your two largest {symbol} notes into one, back to yourself, lifting
@@ -941,6 +1039,7 @@ export function MergeProgressModal({
             </button>
           )}
         </div>
+        )}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 // Review-and-execute for a private send. One transaction, no public leg: the
 // review says what the chain will and will not learn, then RunProgress renders
 // the live run through the shielded context.
+import { trimDecimals } from "@/lib/prices";
 import type { OpProgress } from "./ShieldedProvider";
 import ErrorNotice from "./ErrorNotice";
 import RunProgress from "./RunProgress";
@@ -89,8 +90,8 @@ export default function SendConfirmModal({
             {/* The dollar figure belongs on the last screen before signing, not
                 only on the one where the number was typed. */}
             <span className="text-right whitespace-nowrap">
-              <span className="font-data text-lg text-bone">
-                {amount} {symbol}
+              <span className="font-data text-lg text-bone" title={`${amount} ${symbol}`}>
+                {trimDecimals(amount)} {symbol}
               </span>
               {usd && <span className="block font-data text-[0.7rem] text-faint">{usd}</span>}
             </span>
@@ -100,8 +101,8 @@ export default function SendConfirmModal({
               <span className="text-faint label-soft whitespace-nowrap">
                 {toSelf ? "Your own address" : "Recipient"}
               </span>
-              <span className="font-data text-lg text-acid whitespace-nowrap">
-                {amount} {symbol}
+              <span className="font-data text-lg text-acid whitespace-nowrap" title={`${amount} ${symbol}`}>
+                {trimDecimals(amount)} {symbol}
               </span>
             </div>
             <code className="font-data text-[0.68rem] text-muted break-all leading-relaxed">{to}</code>

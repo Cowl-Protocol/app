@@ -108,3 +108,15 @@ export function formatBalanceShort(value: bigint, decimals: number, maxFraction 
   if (fraction.length <= maxFraction) return exact;
   return `${whole}.${fraction.slice(0, maxFraction)}…`;
 }
+
+/**
+ * A decimal STRING cut to eight fraction digits for display, trailing zeros
+ * trimmed. MAX writes full-precision figures — eighteen digits of fraction —
+ * and a modal row has nowhere to put them: the layout bent sideways into a
+ * horizontal scroll before this. The exact string belongs in the tooltip.
+ */
+export function trimDecimals(s: string, maxFraction = 8): string {
+  const [whole, fraction = ""] = s.split(".");
+  const cut = fraction.slice(0, maxFraction).replace(/0+$/, "");
+  return cut ? `${whole}.${cut}` : whole ?? s;
+}

@@ -6,6 +6,7 @@
 // RunProgress renders that live. A spread fires its parts from this tab, so
 // the copy asks for the tab to stay open until the last one lands.
 import type { Token } from "@/lib/tokens";
+import { trimDecimals } from "@/lib/prices";
 import type { OpProgress } from "./ShieldedProvider";
 import ErrorNotice from "./ErrorNotice";
 import RunProgress from "./RunProgress";
@@ -111,8 +112,8 @@ export default function BoundaryConfirmModal({
             {/* The dollar figure belongs on the last screen before signing, not
                 only on the one where the number was typed. */}
             <span className="text-right whitespace-nowrap">
-              <span className="font-data text-lg text-bone">
-                {amount} {token.symbol}
+              <span className="font-data text-lg text-bone" title={`${amount} ${token.symbol}`}>
+                {trimDecimals(amount)} {token.symbol}
               </span>
               {usd && <span className="block font-data text-[0.7rem] text-faint">{usd}</span>}
             </span>
@@ -123,8 +124,8 @@ export default function BoundaryConfirmModal({
               <TokenGlyph symbol={token.symbol} src={token.logoURI} />
               <span className="text-faint label-soft whitespace-nowrap">{toLabel}</span>
             </span>
-            <span className="font-data text-lg text-acid whitespace-nowrap">
-              {amount} {token.symbol}
+            <span className="font-data text-lg text-acid whitespace-nowrap" title={`${amount} ${token.symbol}`}>
+              {trimDecimals(amount)} {token.symbol}
             </span>
           </div>
         </div>

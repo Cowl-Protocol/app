@@ -72,30 +72,41 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const inField = tradeInputFor(outField);
   const inMeta = tokenMetaForField(inField);
 
-  const amountOut = useMemo(() => {
+  // Whichever side was typed last is the anchor; the venue computes the other.
+  // The protocol itself is always exact-output — a pay-side anchor just asks
+  // the quoter what that input buys and makes the answer the exact output.
+  const [anchor, setAnchor] = useState<"pay" | "receive">("receive");
+  const typed = useMemo(() => {
     try {
-      return parseUnits(amount || "0", receive.decimals);
+      return parseUnits(amount || "0", anchor === "pay" ? inMeta.decimals : receive.decimals);
     } catch {
       return 0n;
     }
-  }, [amount, receive.decimals]);
+  }, [amount, anchor, inMeta.decimals, receive.decimals]);
+
+  // The venue's answer for the typed side, scanned across every fee tier and
+  // kept fresh while the card is open.
+  const tradeQuote = useTradeQuote(inField, outField, typed, anchor);
+  const priced = tradeQuote.state === "priced";
+  const quoteValue = priced ? tradeQuote.value : 0n;
+  const feeTierUsed = priced ? tradeQuote.feeTier : null;
+
+  const amountOut = anchor === "receive" ? typed : quoteValue;
+  const payValue = anchor === "pay" ? typed : quoteValue;
 
   // Uniform trade sizes, same reasoning as the pool boundary: a trade for an
-  // oddly specific amount is a fingerprint on public liquidity. Exact opts out.
+  // oddly specific amount is a fingerprint on public liquidity. Exact opts
+  // out, and a pay-side anchor is exact by construction — its output is
+  // whatever the venue answers.
   const tiers = useMemo(() => tiersFor(receive.decimals), [receive.decimals]);
   const onTier = tiers.includes(amountOut);
-  const sizeOk = exact || onTier;
+  const sizeOk = exact || onTier || anchor === "pay";
   const tierBelow = tiers.filter((t) => t < amountOut).at(0);
   const tierAbove = [...tiers].reverse().filter((t) => t > amountOut).at(0);
 
-  // The venue's price for this exact output, kept fresh while the card is open.
-  const tradeQuote = useTradeQuote(inField, outField, amountOut);
-  const priced = tradeQuote.state === "priced";
-  const quotedIn = priced ? tradeQuote.quotedIn : 0n;
-
   // Who pays the gas, asked before anything is signed. A trade's fee is sized
   // from its own gas figure, which is why the quote names the op.
-  const { quote: relay, checking: relayChecking } = useRelayQuote(inField, amountOut > 0n, "trade");
+  const { quote: relay, checking: relayChecking } = useRelayQuote(inField, typed > 0n, "trade");
   const gasless = !!relay && !selfPay;
 
   // Self-submitted trades carry 1% of headroom over the quote — the venue
@@ -103,10 +114,10 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   // does not draw to the submitter, which self-paid is the trader's own
   // wallet. Relayed trades keep the bare quote: that refund would tip the
   // relayer instead. The run re-quotes before proving; this is the display.
-  const maxIn = quotedIn + (gasless ? 0n : quotedIn / 100n);
+  const maxIn = payValue + (gasless ? 0n : payValue / 100n);
   const relayFee = gasless && relay ? relay.fee : 0n;
   const drawn = maxIn + relayFee;
-  const selfGas = useSelfGasEstimate(1, amountOut > 0n && !gasless, net.tradeGas ?? 15_000_000n);
+  const selfGas = useSelfGasEstimate(1, typed > 0n && !gasless, net.tradeGas ?? 15_000_000n);
 
   const balance = unlocked ? shielded.balanceOf(inField) : 0n;
   const sendable = unlocked ? shielded.sendableOf(inField) : 0n;
@@ -133,13 +144,22 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   // Blocked by the fee, not by the trade — the switch exists for exactly this.
   const feeTrapped = !!relay && !selfPay && priced && unlocked && maxIn <= balance && overBalance;
 
+  // What each panel shows: the typed string on the anchored side, the venue's
+  // answer on the other.
+  const payDisplay = anchor === "pay" ? amount : priced && payValue > 0n ? fmtIn(payValue, inMeta.decimals) : "";
+  const receiveDisplay =
+    anchor === "receive" ? amount : priced && amountOut > 0n ? fmtIn(amountOut, receive.decimals) : "";
+
   const price = useTokenPrice(receive);
-  const usd = usdOf(parseFloat(amount) || 0, price);
+  const usd = usdOf(parseFloat(receiveDisplay) || 0, price);
+  const payPriceToken = tokenBySymbol(inField === 0n ? "ETH" : "USDG");
+  const payPrice = useTokenPrice(payPriceToken);
+  const payUsd = usdOf(parseFloat(payDisplay) || 0, payPrice);
 
   // The venue's price per whole token, for the rate row.
   const rate =
     priced && amountOut > 0n
-      ? fmtIn((quotedIn * 10n ** BigInt(receive.decimals)) / amountOut, inMeta.decimals)
+      ? fmtIn((payValue * 10n ** BigInt(receive.decimals)) / amountOut, inMeta.decimals)
       : null;
 
   const ready =
@@ -147,15 +167,16 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
     !!wallet.address &&
     !wallet.wrongNetwork &&
     amountOut > 0n &&
+    payValue > 0n &&
     sizeOk &&
     priced &&
     !overBalance &&
     !overSendable;
 
   let label = "Enter an amount";
-  if (amountOut > 0n) label = "Review private swap";
-  if (amountOut > 0n && !sizeOk) label = "Pick a shared size";
-  if (amountOut > 0n && sizeOk && tradeQuote.state === "checking") label = "Pricing at the venue";
+  if (typed > 0n) label = "Review private swap";
+  if (typed > 0n && !sizeOk) label = "Pick a shared size";
+  if (typed > 0n && sizeOk && tradeQuote.state === "checking") label = "Pricing at the venue";
   if (tradeQuote.state === "unpriceable") label = `No venue route for ${receive.symbol}`;
   if (unlocked && balance === 0n) label = `Shield ${inMeta.symbol} first`;
   if (overBalance) {
@@ -168,6 +189,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   const flip = () => {
     setReceive(receive.native ? tokenBySymbol("USDG") : tokenBySymbol("ETH"));
     setAmount("");
+    setAnchor("receive");
   };
 
   const unlock = async () => {
@@ -219,7 +241,10 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
     shielded.clearProgress();
   };
 
-  const setTier = (t: bigint) => setAmount(formatUnits(t, receive.decimals));
+  const setTier = (t: bigint) => {
+    setAnchor("receive");
+    setAmount(formatUnits(t, receive.decimals));
+  };
 
   /**
    * Picking the pay side steers the route rather than fighting it: native
@@ -283,9 +308,13 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           <div className="flex items-center gap-3">
             <input
               className="amount text-3xl md:text-4xl text-bone placeholder:text-faint outline-none font-data tracking-tight"
+              inputMode="decimal"
               placeholder="0"
-              value={priced ? fmtIn(quotedIn, inMeta.decimals) : ""}
-              readOnly
+              value={payDisplay}
+              onChange={(e) => {
+                setAnchor("pay");
+                setAmount(e.target.value.replace(/[^0-9.]/g, ""));
+              }}
             />
             <button
               onClick={() => setPicking("pay")}
@@ -296,8 +325,9 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               <span className="text-faint text-xs">▾</span>
             </button>
           </div>
-          {priced && !gasless && maxIn > quotedIn && (
-            <div className="mt-2 text-[0.7rem] text-faint font-data">
+          {payUsd && payDisplay && <div className="mt-2 text-[0.7rem] text-faint font-data">{payUsd}</div>}
+          {priced && !gasless && maxIn > payValue && payValue > 0n && (
+            <div className="mt-1 text-[0.7rem] text-faint font-data">
               max {fmtIn(maxIn, inMeta.decimals)} — unused headroom refunds to your wallet
             </div>
           )}
@@ -317,7 +347,9 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
         {/* Receive panel — the exact side, where the amount is typed */}
         <div className="bg-ink2 p-4 my-1">
           <div className="flex items-center justify-between mb-2 gap-3">
-            <span className="label-soft text-faint whitespace-nowrap">You receive · exact</span>
+            <span className="label-soft text-faint whitespace-nowrap">
+              You receive{anchor === "receive" ? " · exact" : ""}
+            </span>
             {unlocked && (
               <span
                 className="text-[0.7rem] text-faint font-data whitespace-nowrap"
@@ -332,8 +364,11 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               className="amount text-3xl md:text-4xl text-bone placeholder:text-faint outline-none font-data tracking-tight"
               inputMode="decimal"
               placeholder="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+              value={receiveDisplay}
+              onChange={(e) => {
+                setAnchor("receive");
+                setAmount(e.target.value.replace(/[^0-9.]/g, ""));
+              }}
             />
             <button
               onClick={() => setPicking("receive")}
@@ -346,14 +381,34 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
           </div>
           {usd && <div className="mt-2 text-[0.7rem] text-faint font-data">{usd}</div>}
           {/* Shared sizes, stated before someone trips on them. The nudge is a
-              way forward in both directions: the nearest tiers, or exact. */}
+              way forward in both directions: the nearest tiers, or exact. A
+              pay-side anchor is exact by construction, so it gets the soft
+              note with the tiers one click away. */}
           {amountOut > 0n && !onTier && (
             <div
               className={`mt-3 px-3 py-2 text-[0.7rem] leading-relaxed transition-colors ${
-                exact ? "bg-ink3 text-faint" : "bg-warn/10 text-warn"
+                exact || anchor === "pay" ? "bg-ink3 text-faint" : "bg-warn/10 text-warn"
               }`}
             >
-              {exact ? (
+              {anchor === "pay" ? (
+                <>
+                  Anchored on what you pay, so the output is one of a kind on public liquidity.
+                  Shared sizes travel unmarked:{" "}
+                  {[tierAbove, tierBelow]
+                    .filter((t): t is bigint => t !== undefined)
+                    .map((t, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setTier(t)}
+                        className="text-acid hover:text-acid2 transition-colors font-data"
+                      >
+                        {i > 0 && " · "}
+                        {formatUnits(t, receive.decimals)}
+                      </button>
+                    ))}{" "}
+                  {receive.symbol}
+                </>
+              ) : exact ? (
                 <>
                   Trading exactly {amount} {receive.symbol}. An exact amount settles in one go but
                   reads as one of a kind on public liquidity.{" "}
@@ -401,17 +456,20 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
         )}
 
         {/* What this costs, and what it shows */}
-        {amountOut > 0n && sizeOk && (
+        {typed > 0n && sizeOk && (
           <div className="mt-3 px-1 space-y-2 fade-up">
             {tradeQuote.state === "unpriceable" ? (
               <p className="text-[0.7rem] text-faint leading-relaxed">
                 The venue has no pool pricing {receive.symbol} against{" "}
-                {inField === 0n ? "WETH" : inMeta.symbol} at the trade&apos;s fee tier, so this pair
-                cannot route yet.
+                {inField === 0n ? "WETH" : inMeta.symbol} at any fee tier, so this pair cannot
+                route yet.
               </p>
             ) : (
               <>
                 {rate && <Row k="Rate" v={`1 ${receive.symbol} = ${rate} ${inMeta.symbol}`} />}
+                {feeTierUsed !== null && (
+                  <Row k="Route" v={`one hop · ${feeTierUsed / 10000}% pool`} />
+                )}
                 <Row k="Output" v="exact — proven before submitting" accent />
                 <Row k="Proving" v="In your browser" accent />
                 <Row
@@ -606,9 +664,9 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
         payLogoURI={logoFor(inField)}
         receiveSymbol={receive.symbol}
         receiveLogoURI={receive.logoURI}
-        amountOut={amount}
-        quotedIn={fmtIn(quotedIn, inMeta.decimals)}
-        maxIn={!gasless && maxIn > quotedIn ? fmtIn(maxIn, inMeta.decimals) : undefined}
+        amountOut={receiveDisplay || "0"}
+        quotedIn={fmtIn(payValue, inMeta.decimals)}
+        maxIn={!gasless && maxIn > payValue ? fmtIn(maxIn, inMeta.decimals) : undefined}
         usd={usd}
         gasless={gasless}
         relayFee={gasless ? `${formatBalanceShort(relayFee, inMeta.decimals)} ${inMeta.symbol}` : undefined}

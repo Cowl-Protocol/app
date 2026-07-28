@@ -11,6 +11,8 @@ export type CowlContracts = {
   poolDeployBlock?: bigint;
   weth?: `0x${string}`;
   usdg?: `0x${string}`;
+  /** The protocol token, where it exists. Unset keeps it display-only. */
+  cowl?: `0x${string}`;
   swapRouter?: `0x${string}`;
   quoter?: `0x${string}`;
   tradeAdapter?: `0x${string}`;
@@ -101,6 +103,7 @@ export const NETWORKS: Record<string, NetworkDef> = {
       poolDeployBlock: 18121312n,
       weth: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
       usdg: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      cowl: "0xfc7CB8A3Df69c0F658Ac5Fb1e31dE1843E04E38f",
       swapRouter: "0xCaf681a66D020601342297493863E78C959E5cb2",
       quoter: "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7",
       tradeAdapter: "0x0b86f9d1D2E0Abc8ab7C7BE39498855E8F4a3A98",

@@ -18,8 +18,8 @@ export type Token = {
 const net = activeNetwork();
 
 // The trade venue on the testnet is a V3-interface stand-in with WETH/USDG.
-// $COWL is listed as the protocol token; its trade route lands when the pool
-// pair is live, so it stays selectable but quotes as indicative.
+// $COWL carries its real address where it exists (mainnet); its route lives in
+// the 1% pool, which the tier-scanning quote path finds on its own.
 export const TOKENS: Token[] = [
   {
     symbol: "ETH",
@@ -46,7 +46,7 @@ export const TOKENS: Token[] = [
   {
     symbol: "COWL",
     name: "Cowl Protocol",
-    address: "0x0000000000000000000000000000000000000000",
+    address: net.contracts.cowl ?? "0x0000000000000000000000000000000000000000",
     decimals: 18,
     logoURI: "/tokens/cowl.png",
   },

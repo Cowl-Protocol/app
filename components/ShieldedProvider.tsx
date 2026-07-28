@@ -55,7 +55,7 @@ import { syncShieldedPool } from "@/lib/shielded/sync";
 import {
   approvePool,
   fieldToAddress,
-  quoteExactOutput,
+  quoteBestExactOutput,
   simulateSpend,
   simulateTrade,
   submitShield,
@@ -846,12 +846,15 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             prog.relayed = relayed;
           }
 
-          const quotedIn = await quoteExactOutput(
+          // Priced across every fee tier — pairs live where their liquidity
+          // is, and the winning tier rides into the submission per trade.
+          const best = await quoteBestExactOutput(
             net,
             venueLeg(net, tokenInField),
             venueLeg(net, tokenOutField),
             amountOut,
           );
+          const quotedIn = best.amount;
           const maxIn = quotedIn + (quote ? 0n : quotedIn / 100n);
 
           // Leg one: unshield maxIn + fee to the adapter, change back to us.
@@ -898,7 +901,7 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
             spendProof: spendProof.proof,
             tokenOut: tokenOutField,
             amountOut,
-            poolFee: net.contracts.feeTier ?? 3000,
+            poolFee: best.feeTier,
             shieldCommitment: fieldToHex(outCommitment) as `0x${string}`,
             shieldNewRoot: fieldToHex(at.newRoot) as `0x${string}`,
             shieldCiphertext: packCipher(encryptNote(outNote, k.viewPubHex)),

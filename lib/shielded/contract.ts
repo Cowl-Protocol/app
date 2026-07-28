@@ -319,7 +319,109 @@ const QUOTER_ABI = [
       { name: "gasEstimate", type: "uint256" },
     ],
   },
+  {
+    type: "function",
+    name: "quoteExactInputSingle",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "tokenIn", type: "address" },
+          { name: "tokenOut", type: "address" },
+          { name: "amountIn", type: "uint256" },
+          { name: "fee", type: "uint24" },
+          { name: "sqrtPriceLimitX96", type: "uint160" },
+        ],
+      },
+    ],
+    outputs: [
+      { name: "amountOut", type: "uint256" },
+      { name: "sqrtPriceX96After", type: "uint160" },
+      { name: "initializedTicksCrossed", type: "uint32" },
+      { name: "gasEstimate", type: "uint256" },
+    ],
+  },
 ] as const;
+
+/**
+ * Every fee tier the venue deploys pools at. A pair lives where its liquidity
+ * is — WETH/USDG at 0.05%, COWL/WETH at 1% — so a route pinned to one tier
+ * declares every other pair unpriceable. The adapter takes the tier per trade,
+ * which is why scanning is safe against the deployed contract. Same ladder the
+ * relayer prices fees across.
+ */
+const TRADE_FEE_TIERS = [100, 500, 3000, 10000] as const;
+
+export type BestQuote = { amount: bigint; feeTier: number };
+
+/**
+ * Price an exact output across every tier and take the cheapest input.
+ * Throws only when no pool anywhere prices the pair.
+ */
+export async function quoteBestExactOutput(
+  net: NetworkDef,
+  tokenIn: Address,
+  tokenOut: Address,
+  amountOut: bigint,
+): Promise<BestQuote> {
+  const quoter = net.contracts.quoter;
+  if (!quoter) throw new Error(`No trade venue on ${net.label}.`);
+  const tiers = [...new Set([net.contracts.feeTier ?? 3000, ...TRADE_FEE_TIERS])];
+  const answers = await Promise.all(
+    tiers.map(async (feeTier) => {
+      try {
+        const { result } = await publicClient.simulateContract({
+          address: quoter,
+          abi: QUOTER_ABI,
+          functionName: "quoteExactOutputSingle",
+          args: [{ tokenIn, tokenOut, amount: amountOut, fee: feeTier, sqrtPriceLimitX96: 0n }],
+        });
+        return { amount: result[0], feeTier };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const priced = answers.filter((a): a is BestQuote => a !== null && a.amount > 0n);
+  if (priced.length === 0) throw new Error("The venue has no pool pricing this pair.");
+  return priced.reduce((best, a) => (a.amount < best.amount ? a : best));
+}
+
+/**
+ * Price an exact input across every tier and take the largest output. The
+ * pay-side anchor of the card quotes through this; the run itself still
+ * executes exact-output.
+ */
+export async function quoteBestExactInput(
+  net: NetworkDef,
+  tokenIn: Address,
+  tokenOut: Address,
+  amountIn: bigint,
+): Promise<BestQuote> {
+  const quoter = net.contracts.quoter;
+  if (!quoter) throw new Error(`No trade venue on ${net.label}.`);
+  const tiers = [...new Set([net.contracts.feeTier ?? 3000, ...TRADE_FEE_TIERS])];
+  const answers = await Promise.all(
+    tiers.map(async (feeTier) => {
+      try {
+        const { result } = await publicClient.simulateContract({
+          address: quoter,
+          abi: QUOTER_ABI,
+          functionName: "quoteExactInputSingle",
+          args: [{ tokenIn, tokenOut, amountIn, fee: feeTier, sqrtPriceLimitX96: 0n }],
+        });
+        return { amount: result[0], feeTier };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const priced = answers.filter((a): a is BestQuote => a !== null && a.amount > 0n);
+  if (priced.length === 0) throw new Error("The venue has no pool pricing this pair.");
+  return priced.reduce((best, a) => (a.amount > best.amount ? a : best));
+}
 
 /** Everything CowlTradeAdapter.trade takes, client-shaped. */
 export type TradeSubmission = {

@@ -10,7 +10,7 @@
 // quote gone stale by minutes is the difference between a trade and a revert.
 import { useEffect, useState } from "react";
 import { activeNetwork } from "./networks";
-import { quoteExactOutput, venueLeg } from "./shielded/contract";
+import { quoteBestExactInput, quoteBestExactOutput, venueLeg } from "./shielded/contract";
 
 const net = activeNetwork();
 
@@ -28,31 +28,39 @@ export function tradeInputFor(tokenOutField: bigint): bigint {
   return BigInt(usdg);
 }
 
+/** Which side the typed number anchors: the exact output, or the input. */
+export type TradeAnchor = "receive" | "pay";
+
 export type TradeQuote =
   | { state: "idle" }
   | { state: "checking" }
-  | { state: "priced"; quotedIn: bigint }
-  /** The quoter reverted — no pool prices this pair at the trade's fee tier. */
+  /** `value` is the OTHER side of the typed amount; `feeTier` is the pool that priced it. */
+  | { state: "priced"; value: bigint; feeTier: number }
+  /** No pool at any tier prices this pair. */
   | { state: "unpriceable" };
 
 /** How often a standing quote is re-read while the card is open. */
 const REFRESH_MS = 20_000;
 
 /**
- * The venue's current price for an exact output, kept fresh while the card is
- * open. "Unpriceable" is a real answer, not a failure: it is how the card knows
- * to say the venue has no pool for this pair rather than showing a zero.
+ * The venue's current price for the typed side, kept fresh while the card is
+ * open. Anchored on receive it answers what the exact output costs; anchored
+ * on pay it answers what that input buys — both scanned across every fee tier,
+ * because pairs live where their liquidity is. "Unpriceable" is a real answer,
+ * not a failure: it is how the card says the venue has no pool for this pair
+ * rather than showing a zero.
  */
 export function useTradeQuote(
   tokenInField: bigint,
   tokenOutField: bigint,
-  amountOut: bigint,
+  amount: bigint,
+  anchor: TradeAnchor,
 ): TradeQuote {
   const [quote, setQuote] = useState<TradeQuote>({ state: "idle" });
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    if (amountOut <= 0n || tokenInField === tokenOutField || !net.contracts.quoter) {
+    if (amount <= 0n || tokenInField === tokenOutField || !net.contracts.quoter) {
       setQuote({ state: "idle" });
       return;
     }
@@ -60,9 +68,15 @@ export function useTradeQuote(
     // Only the first read of a new question shows as checking; the periodic
     // refresh replaces the number quietly instead of blinking the row.
     setQuote((q) => (q.state === "priced" ? q : { state: "checking" }));
-    quoteExactOutput(net, venueLeg(net, tokenInField), venueLeg(net, tokenOutField), amountOut)
-      .then((quotedIn) => {
-        if (alive) setQuote({ state: "priced", quotedIn });
+    const inLeg = venueLeg(net, tokenInField);
+    const outLeg = venueLeg(net, tokenOutField);
+    const ask =
+      anchor === "receive"
+        ? quoteBestExactOutput(net, inLeg, outLeg, amount)
+        : quoteBestExactInput(net, inLeg, outLeg, amount);
+    ask
+      .then((best) => {
+        if (alive) setQuote({ state: "priced", value: best.amount, feeTier: best.feeTier });
       })
       .catch(() => {
         if (alive) setQuote({ state: "unpriceable" });
@@ -73,7 +87,7 @@ export function useTradeQuote(
       clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenInField, tokenOutField, amountOut, tick]);
+  }, [tokenInField, tokenOutField, amount, anchor, tick]);
 
   return quote;
 }

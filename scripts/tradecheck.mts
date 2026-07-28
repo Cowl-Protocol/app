@@ -21,7 +21,13 @@ import { encryptNote } from "../lib/shielded/crypto";
 import { deriveShieldedKeysFromSignature } from "../lib/shielded/keys";
 import { appendProof, computeRoot } from "../lib/shielded/tree";
 import { applyScan, emptyPool, emptyWallet, newNote, planUnshield } from "../lib/shielded/pool";
-import { quoteExactOutput, venueLeg, type TradeSubmission } from "../lib/shielded/contract";
+import {
+  quoteBestExactInput,
+  quoteBestExactOutput,
+  quoteExactOutput,
+  venueLeg,
+  type TradeSubmission,
+} from "../lib/shielded/contract";
 import { encodeTrade, fetchQuote } from "../lib/relay";
 import { tradeInputFor } from "../lib/trade";
 import { NETWORKS } from "../lib/networks";
@@ -158,6 +164,30 @@ try {
   check("the venue prices ETH → USDG", buy > 0n, `${buy} wei for 0.1 USDG`);
   const sell = await quoteExactOutput(mainnet, outLeg, inLeg, 10n ** 13n); // 0.00001 ETH out
   check("the venue prices USDG → ETH", sell > 0n, `${sell} USDG units for 0.00001 ETH`);
+
+  // The tier scan: a route pinned to one tier would declare every other
+  // pair unpriceable. The property that matters is that scanning never does
+  // worse than the pinned tier — whichever pool answers cheapest is a real,
+  // executable quote, not a cosmetic one.
+  const bestUsdg = await quoteBestExactOutput(mainnet, inLeg, outLeg, 10n ** 5n);
+  check(
+    "the scan never pays more than the pinned tier",
+    bestUsdg.amount <= buy,
+    `scan ${bestUsdg.amount} (tier ${bestUsdg.feeTier}) vs pinned ${buy}`,
+  );
+  const cowl = mainnet.contracts.cowl!;
+  const bestCowl = await quoteBestExactOutput(mainnet, inLeg, cowl, 10_000n * 10n ** 18n);
+  check(
+    "COWL routes through its 1% pool",
+    bestCowl.amount > 0n && bestCowl.feeTier === 10000,
+    `${bestCowl.amount} wei for 10k COWL, tier ${bestCowl.feeTier}`,
+  );
+  const payAnchored = await quoteBestExactInput(mainnet, inLeg, cowl, 10n ** 15n);
+  check(
+    "a pay-side anchor quotes what the input buys",
+    payAnchored.amount > 0n && payAnchored.feeTier === 10000,
+    `0.001 ETH buys ${payAnchored.amount} COWL units`,
+  );
 } catch (e) {
   check("the venue quoter answers", false, (e as Error).message.split("\n")[0]);
 }

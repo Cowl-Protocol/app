@@ -311,9 +311,6 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
               align="right"
               text="The trade spends shielded notes and its output re-shields in the same transaction. The venue sees a swap from the pool — relayed, your wallet appears nowhere in it."
             />
-            {/* Proven end to end, now soaking under real use — the label says
-                which phase this is in, the way the boundary's cap note does. */}
-            <span className="label-mono text-[0.62rem] text-muted px-2 py-1 bg-ink3">Beta</span>
             <span className="label-mono text-[0.62rem] text-acid px-2 py-1 bg-[#161a10]">Private</span>
           </span>
         </div>

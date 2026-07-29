@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   // the relayer VPS (no Node process, just files under a web root). Emits to `out/`.
   output: "export",
   images: { unoptimized: true },
+  // Dev only. Next serves its chunks and HMR socket to the host it was started
+  // on and blocks every other spelling of this machine — reach the dev server
+  // as 127.0.0.1 without this and the page arrives as HTML that never
+  // hydrates: no fetches, no handlers, nothing but a screenshot of the UI.
+  // Sign-in with X sends people to a loopback callback, so both names are in play.
+  allowedDevOrigins: ["127.0.0.1", "localhost", "[::1]"],
   turbopack: {
     resolveAlias: {
       // Cut off the Base Account connector's optional-dep subtree (@base-org/account →

@@ -1,0 +1,47 @@
+name: CodeQL
+
+# Its own file, not a job inside ci.yml, because CodeQL needs
+# `security-events: write` to publish alerts and ci.yml is `contents: read`.
+# Nothing in ci.yml publishes anything, which is worth keeping rather than
+# widening for a second tool.
+#
+# **This reports, it does not gate.** The CodeQL action has no "fail the build on
+# a finding" switch. Findings land as code-scanning alerts; turning them into a
+# triaged report with verdicts is the half of this step that needs the first run
+# to exist. Triage for both repositories lands in the cli repo's audits/ tree,
+# which is where every other security artifact lives.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, off the hour. CodeQL ships new queries regularly and this is what
+    # runs them against code that has not changed.
+    - cron: "41 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze javascript-typescript
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
+        with:
+          languages: javascript-typescript
+          # The wider suite. This is the surface that touches signatures, view
+          # keys and the proving worker in a browser, so the lower-precision
+          # queries earn the triage they cost.
+          queries: security-extended
+      # No build step. Next.js is not compiled for this analysis; JavaScript and
+      # TypeScript are read from source.
+      - uses: github/codeql-action/analyze@4187e74d05793876e9989daffde9c3e66b4acd07 # v3

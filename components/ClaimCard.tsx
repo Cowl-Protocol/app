@@ -68,6 +68,8 @@ type SessionInfo = {
     ahead?: number;
     explorer?: string;
     zcowl?: string;
+    amount?: string;
+    sentAt?: string | null;
   } | null;
 };
 
@@ -406,35 +408,68 @@ export default function ClaimCard() {
                   ? "Delivered, unseen"
                   : claimed.status === "failed"
                     ? "Delivery hit a snag — we're on it"
-                    : "Claimed — on its way, unseen"}
+                    : claimed.status === "sending"
+                      ? "Sending yours now"
+                      : "Claimed — on its way, unseen"}
               </div>
+
+              {/* A claim is a promise with a wait attached. Say where it is,
+                  what happens next, and — once it lands — leave the receipt
+                  on screen so nobody has to take our word for it. */}
+              <div className="bg-ink2 p-3.5 mt-1 space-y-2">
+                <Row
+                  k="Status"
+                  v={
+                    claimed.status === "sent"
+                      ? "Delivered"
+                      : claimed.status === "sending"
+                        ? "Being sent now"
+                        : claimed.status === "failed"
+                          ? "Needs a look"
+                          : typeof claimed.ahead === "number" && claimed.ahead > 0
+                            ? `Waiting — ${claimed.ahead} ahead of you`
+                            : "Waiting — yours is next"
+                  }
+                  accent
+                />
+                {claimed.amount && <Row k="Amount" v={`${claimed.amount} COWL`} />}
+                {claimed.sentAt && <Row k="Sent" v={claimed.sentAt.replace("T", " ").slice(0, 19) + " UTC"} />}
+                {claimed.txHash && claimed.explorer ? (
+                  <div className="flex items-center justify-between text-xs gap-4">
+                    <span className="text-faint font-data shrink-0">Transaction</span>
+                    <a
+                      href={`${claimed.explorer}/tx/${claimed.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-data text-right text-acid hover:text-bone transition-colors break-all"
+                    >
+                      {claimed.txHash.slice(0, 10)}…{claimed.txHash.slice(-6)} ↗
+                    </a>
+                  </div>
+                ) : (
+                  <Row k="Transaction" v="appears once it lands" />
+                )}
+              </div>
+
               {claimed.status === "sent" ? (
                 <p className="text-center text-xs text-faint mt-3">
                   It is in your{" "}
                   <Link href="/portfolio" className="text-muted hover:text-bone transition-colors">
                     shielded balance
                   </Link>
-                  {claimed.txHash && claimed.explorer && (
-                    <>
-                      {" · "}
-                      <a
-                        href={`${claimed.explorer}/tx/${claimed.txHash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-muted hover:text-bone transition-colors"
-                      >
-                        the transaction
-                      </a>{" "}
-                      names no one
-                    </>
-                  )}
+                  . The transaction names no one.
                 </p>
-              ) : claimed.status === "pending" ? (
+              ) : claimed.status === "failed" ? (
                 <p className="text-center text-xs text-faint mt-3">
-                  Every reward is sent privately, one at a time, which takes a few minutes each.
-                  Close this page if you like — your place is kept.
+                  Your place is kept and nothing is lost. This page updates on its own.
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-center text-xs text-faint mt-3">
+                  Rewards go out privately, one at a time, a few minutes each — so yours may take a
+                  while to come round. This page checks for you every 30 seconds, and you can close
+                  it and come back whenever. Your place is kept either way.
+                </p>
+              )}
             </>
           ) : info && !info.open ? (
             <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">
@@ -509,6 +544,15 @@ export default function ClaimCard() {
         <MaskLogo className="inline h-2 w-auto text-acid mr-1.5" />
         On the tape it reads as a distribution. Who claimed, and how much — that stays yours.
       </p>
+    </div>
+  );
+}
+
+function Row({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
+  return (
+    <div className="flex items-center justify-between text-xs gap-4">
+      <span className="text-faint font-data shrink-0">{k}</span>
+      <span className={`font-data text-right ${accent ? "text-acid" : "text-muted"}`}>{v}</span>
     </div>
   );
 }

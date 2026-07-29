@@ -9,6 +9,7 @@
 // Delivery is a private send: the chain records that a distribution
 // happened, never who claimed how much.
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSignMessage } from "wagmi";
 import { useWallet, shortAddr } from "@/lib/useWallet";
 import { useShielded } from "./ShieldedProvider";
@@ -58,7 +59,7 @@ type SessionInfo = {
   handle?: string;
   xid?: string;
   accountOk?: boolean;
-  claim?: { status: string; txHash: string | null } | null;
+  claim?: { status: string; txHash: string | null; ahead: number; explorer: string } | null;
 };
 
 /** The exact text the wallet signs — one shape here and on the server. */
@@ -205,7 +206,13 @@ export default function ClaimCard() {
     {
       k: "Claim",
       d: "One signature. The COWL lands shielded, off the tape",
-      done: claimed ? (claimed.status === "sent" ? "Delivered" : "Queued for delivery") : null,
+      done: claimed
+        ? claimed.status === "sent"
+          ? "Delivered to your shielded balance"
+          : claimed.ahead > 0
+            ? `In line — ${claimed.ahead} ahead of you`
+            : "Yours is next"
+        : null,
     },
   ];
 
@@ -295,9 +302,45 @@ export default function ClaimCard() {
               Batch one coming soon
             </button>
           ) : claimed ? (
-            <div className="w-full label-mono text-sm py-4 bg-[#161a10] text-acid text-center">
-              {claimed.status === "sent" ? "Delivered, unseen" : "Claimed — on its way, unseen"}
-            </div>
+            // The wait is real — proving takes minutes and the pool is written
+            // one at a time — so the card says what is happening rather than
+            // leaving a claimed reward looking stalled.
+            <>
+              <div className="w-full label-mono text-sm py-4 bg-[#161a10] text-acid text-center">
+                {claimed.status === "sent"
+                  ? "Delivered, unseen"
+                  : claimed.status === "failed"
+                    ? "Delivery hit a snag — we're on it"
+                    : "Claimed — on its way, unseen"}
+              </div>
+              {claimed.status === "sent" ? (
+                <p className="text-center text-xs text-faint mt-3">
+                  It is in your{" "}
+                  <Link href="/portfolio" className="text-muted hover:text-bone transition-colors">
+                    shielded balance
+                  </Link>
+                  {claimed.txHash && (
+                    <>
+                      {" · "}
+                      <a
+                        href={`${claimed.explorer}/tx/${claimed.txHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-muted hover:text-bone transition-colors"
+                      >
+                        the transaction
+                      </a>{" "}
+                      names no one
+                    </>
+                  )}
+                </p>
+              ) : claimed.status === "pending" ? (
+                <p className="text-center text-xs text-faint mt-3">
+                  Every reward is sent privately, one at a time, which takes a few minutes each.
+                  Close this page if you like — your place is kept.
+                </p>
+              ) : null}
+            </>
           ) : info && !info.open ? (
             <button disabled className="w-full label-mono text-sm py-4 bg-ink3 text-faint cursor-default">
               Batch one is fully claimed

@@ -165,6 +165,19 @@ export default function ClaimCard() {
   // True when the book itself is open, not merely its address known.
   const bookOpen = Boolean(shielded.paymentAddress);
 
+  // What a queued claim needs, named so the card can say what is still
+  // missing rather than offering a button that fails on the server.
+  const missing = useMemo(() => {
+    const gaps: string[] = [];
+    if (!info?.signedIn || !info.xid || !info.handle) gaps.push("your X sign-in");
+    if (!followed) gaps.push("the follow step");
+    if (!wallet.address) gaps.push("a connected wallet");
+    if (!payTo) gaps.push("your shielded address");
+    return gaps;
+  }, [info, followed, wallet.address, payTo]);
+
+  const ready = missing.length === 0;
+
   // Record the follow so a reload never asks again. If the call fails the
   // local flag still carries this session — the step is an honour check.
   const markFollowed = useCallback(() => {
@@ -477,11 +490,16 @@ export default function ClaimCard() {
           ) : (
             <button
               onClick={submit}
-              disabled={busy || info?.accountOk === false}
-              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:opacity-90 transition-opacity disabled:opacity-50"
+              disabled={busy || !ready || info?.accountOk === false}
+              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:opacity-90 transition-opacity disabled:bg-ink3 disabled:text-faint"
             >
               {busy ? "Claiming…" : "Claim"}
             </button>
+          )}
+          {/* Nothing joins the queue half-filled, so say what is still open
+              rather than let the click fail on the server. */}
+          {LIVE && !claimed && step === 4 && !ready && (
+            <p className="text-center text-xs text-faint mt-3">Still needed: {missing.join(", ")}</p>
           )}
         </div>
       </div>

@@ -16,6 +16,7 @@ const LINKS: { href: string; label: string; soon?: boolean }[] = [
   { href: "/send", label: "Send" },
   { href: "/receive", label: "Receive" },
   { href: "/portfolio", label: "Portfolio" },
+  { href: "/airdrop", label: "Airdrop" },
   { href: "/earn", label: "Earn", soon: true },
 ];
 

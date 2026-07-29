@@ -348,15 +348,22 @@ export default function ClaimCard() {
                   ) : (
                     <p className="text-xs text-muted mt-0.5">{s.d}</p>
                   )}
-                  {/* The book stays closed until it is opened for real — the
-                      way back in has to be here at every stage, claimed or not. */}
-                  {LIVE && n === 3 && wallet.address && !bookOpen && (
+                  {/* The way into the book has to be here at every stage —
+                      claimed or not, wallet attached or not. A reload that
+                      drops the connection must never leave a dead end. */}
+                  {LIVE && n === 3 && !bookOpen && (
                     <button
-                      onClick={unlock}
+                      onClick={wallet.address ? unlock : wallet.connect}
                       disabled={busy}
                       className="mt-1.5 label-mono text-[0.68rem] text-acid hover:text-bone transition-colors disabled:opacity-50"
                     >
-                      {busy ? "Opening…" : payTo ? "Open it to see what's inside →" : "Open shielded address →"}
+                      {!wallet.address
+                        ? "Connect wallet →"
+                        : busy
+                          ? "Opening…"
+                          : payTo
+                            ? "Open it to see what's inside →"
+                            : "Open shielded address →"}
                     </button>
                   )}
                 </div>

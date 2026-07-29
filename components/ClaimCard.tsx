@@ -54,6 +54,7 @@ type SessionInfo = {
   xHandle: string;
   signedIn: boolean;
   expired?: boolean;
+  followed?: boolean;
   handle?: string;
   xid?: string;
   accountOk?: boolean;
@@ -72,7 +73,8 @@ export default function ClaimCard() {
 
   const [info, setInfo] = useState<SessionInfo | null>(null);
   const [apiDown, setApiDown] = useState(false);
-  const [followed, setFollowed] = useState(false);
+  // Clicked this session, before the server has confirmed it back.
+  const [followedNow, setFollowedNow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,6 +108,18 @@ export default function ClaimCard() {
   }, [refresh]);
 
   const claimed = info?.claim ?? null;
+  // The server remembers it against the X account; the local flag only covers
+  // the moment between the click and the next poll.
+  const followed = info?.followed === true || followedNow;
+
+  // Record the follow so a reload never asks again. If the call fails the
+  // local flag still carries this session — the step is an honour check.
+  const markFollowed = useCallback(() => {
+    setFollowedNow(true);
+    fetch(`${apiBase()}/api/followed`, { method: "POST", credentials: "include" })
+      .then(refresh)
+      .catch(() => {});
+  }, [refresh]);
   const step = useMemo(() => {
     if (!info?.signedIn) return 1;
     if (claimed) return 5;
@@ -306,13 +320,13 @@ export default function ClaimCard() {
                 href={`https://x.com/intent/follow?screen_name=${xHandle}`}
                 target="_blank"
                 rel="noreferrer"
-                onClick={() => setFollowed(true)}
+                onClick={markFollowed}
                 className="block w-full label-mono text-sm py-4 bg-acid text-ink text-center hover:opacity-90 transition-opacity"
               >
                 Follow @{xHandle} on X
               </a>
               <button
-                onClick={() => setFollowed(true)}
+                onClick={markFollowed}
                 className="w-full label-mono text-[0.68rem] text-faint hover:text-bone transition-colors mt-2.5"
               >
                 Already following

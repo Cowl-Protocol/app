@@ -263,17 +263,6 @@ export default function ClaimCard() {
                   ) : (
                     <p className="text-xs text-muted mt-0.5">{s.d}</p>
                   )}
-                  {active && n === 2 && (
-                    <a
-                      href={`https://x.com/intent/follow?screen_name=${xHandle}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={() => setFollowed(true)}
-                      className="inline-block mt-2 label-mono text-[0.68rem] text-acid hover:text-bone transition-colors"
-                    >
-                      Follow on X →
-                    </a>
-                  )}
                 </div>
               </div>
             );
@@ -310,12 +299,25 @@ export default function ClaimCard() {
               Sign in with X
             </a>
           ) : step === 2 ? (
-            <button
-              onClick={() => setFollowed(true)}
-              className="w-full label-mono text-sm py-4 bg-ink3 text-bone hover:text-acid transition-colors"
-            >
-              I follow @{xHandle}
-            </button>
+            // One click does the follow and moves on. Anyone already following
+            // takes the quieter line underneath instead of a pointless tab.
+            <>
+              <a
+                href={`https://x.com/intent/follow?screen_name=${xHandle}`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setFollowed(true)}
+                className="block w-full label-mono text-sm py-4 bg-acid text-ink text-center hover:opacity-90 transition-opacity"
+              >
+                Follow @{xHandle} on X
+              </a>
+              <button
+                onClick={() => setFollowed(true)}
+                className="w-full label-mono text-[0.68rem] text-faint hover:text-bone transition-colors mt-2.5"
+              >
+                Already following
+              </button>
+            </>
           ) : step === 3 ? (
             !wallet.address ? (
               <button

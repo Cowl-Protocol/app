@@ -46,6 +46,7 @@ export default function ClaimCard() {
   const { signMessageAsync } = useSignMessage();
 
   const [info, setInfo] = useState<SessionInfo | null>(null);
+  const [apiDown, setApiDown] = useState(false);
   const [followed, setFollowed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,8 +55,11 @@ export default function ClaimCard() {
     try {
       const res = await fetch(`${CLAIM_API}/api/session`, { credentials: "include" });
       setInfo(await res.json());
+      setApiDown(false);
     } catch {
+      console.error(`claim service unreachable at ${CLAIM_API}`);
       setInfo(null);
+      setApiDown(true);
     }
   }, []);
 
@@ -124,11 +128,34 @@ export default function ClaimCard() {
 
   const xHandle = info?.xHandle ?? "cowlprotocol";
 
+  // Each step carries what to say before it's done, and what it became once
+  // it is — the card should read like a receipt as you move down it.
   const STEPS = [
-    { k: "Sign in with X", d: "One account, one claim. We read your handle and nothing else" },
-    { k: `Follow @${xHandle}`, d: "Where every batch is announced first" },
-    { k: "Open your shielded address", d: "Connect a wallet and sign once — the address only you can read into" },
-    { k: "Claim", d: "One signature. The COWL lands shielded, off the tape" },
+    {
+      k: "Sign in with X",
+      d: "One account, one claim. We read your handle and nothing else",
+      done: info?.signedIn ? `Signed in as @${info.handle}` : null,
+    },
+    {
+      k: `Follow @${xHandle}`,
+      d: "Where every batch is announced first",
+      done: followed || claimed ? `Following @${xHandle}` : null,
+    },
+    {
+      k: "Open your shielded address",
+      d: "Connect a wallet and sign once — the address only you can read into",
+      done:
+        wallet.address && shielded.paymentAddress
+          ? `${shortAddr(wallet.address)} → ${shielded.paymentAddress.slice(0, 16)}…`
+          : wallet.address
+            ? `${shortAddr(wallet.address)} connected — one sign to open`
+            : null,
+    },
+    {
+      k: "Claim",
+      d: "One signature. The COWL lands shielded, off the tape",
+      done: claimed ? (claimed.status === "sent" ? "Delivered" : "Queued for delivery") : null,
+    },
   ];
 
   return (
@@ -164,14 +191,27 @@ export default function ClaimCard() {
           </div>
         </div>
 
-        {/* Steps */}
+        {/* The claim service is the card's source of truth — say so when it's gone. */}
+        {LIVE && apiDown && (
+          <div className="bg-ink2 p-3.5 my-1 flex items-center justify-between gap-3">
+            <p className="text-xs text-[#c96a5a]">Can&apos;t reach the claim service.</p>
+            <button
+              onClick={refresh}
+              className="label-mono text-[0.68rem] text-acid hover:text-bone transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Steps — each row turns into a receipt of what it became. */}
         <div className="mt-4 px-1 space-y-4">
           {STEPS.map((s, i) => {
             const n = i + 1;
-            const done = LIVE && (step > n || (n === 4 && step === 5));
-            const active = LIVE && step === n;
+            const done = LIVE && (step > n || Boolean(claimed));
+            const active = LIVE && step === n && !claimed;
             return (
-              <div key={s.k} className={`flex gap-3 ${active ? "" : "opacity-70"}`}>
+              <div key={s.k} className={`flex gap-3 ${active || s.done ? "" : "opacity-70"}`}>
                 <span
                   className={`shrink-0 h-6 w-6 flex items-center justify-center label-mono text-[0.62rem] ${
                     done ? "bg-[#161a10] text-acid" : active ? "bg-ink3 text-acid" : "bg-ink3 text-faint"
@@ -181,7 +221,11 @@ export default function ClaimCard() {
                 </span>
                 <div className="flex-1">
                   <p className="label-soft text-bone">{s.k}</p>
-                  <p className="text-xs text-muted mt-0.5">{s.d}</p>
+                  {s.done ? (
+                    <p className="text-xs text-acid mt-0.5 font-data break-all">{s.done}</p>
+                  ) : (
+                    <p className="text-xs text-muted mt-0.5">{s.d}</p>
+                  )}
                   {active && n === 2 && (
                     <a
                       href={`https://x.com/intent/follow?screen_name=${xHandle}`}
@@ -199,13 +243,8 @@ export default function ClaimCard() {
           })}
         </div>
 
-        {/* Status line */}
-        {LIVE && info?.signedIn && (
-          <p className="text-xs text-faint mt-4 px-1">
-            @{info.handle}
-            {wallet.address ? ` · ${shortAddr(wallet.address)}` : ""}
-            {info.accountOk === false ? ` · account younger than ${info.minAgeDays} days — not eligible` : ""}
-          </p>
+        {LIVE && info?.signedIn && info.accountOk === false && (
+          <p className="text-xs text-[#c96a5a] mt-4 px-1">This X account isn&apos;t eligible for batch one.</p>
         )}
         {error && <p className="text-xs text-[#c96a5a] mt-2 px-1">{error}</p>}
 

@@ -1,0 +1,50 @@
+name: CI
+
+# Typecheck, the offline verify scripts, then a real production build.
+#
+# The verify scripts in scripts/ split cleanly in two, and only one half belongs
+# on a push. capcheck, mergecheck, qrcheck and retrycheck are properties of this
+# source: denomination and cap arithmetic, note selection and merge rounds, QR
+# round-tripping, and the resume-never-restart rule that was written after a
+# retry re-sent eight deposits that had already landed. They need no network and
+# finish in under a second each.
+#
+# The rest are left out on purpose, and the reasons differ:
+#   assets/holdings/price/rpc/relay/fee  read live chain, relayer or price data
+#   sendcheck, crosscheck                build real proofs, so they pull the
+#                                        52MB CRS and take minutes
+#   crosscheck, tradecheck               import from ../../cli, which does not
+#                                        exist in a clone of this repo alone
+# They stay part of the manual pre-release pass. See the app README.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: typecheck, offline checks, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:offline
+      # Builds the proving workers first, then the static export. This is the
+      # step that catches a broken worker bundle, which typechecking cannot see
+      # and which breaks proving for everyone the moment it ships.
+      - run: npm run build

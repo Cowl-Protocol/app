@@ -6,6 +6,8 @@
     "dev": "node scripts/build-worker.mjs && next dev -p 3001",
     "build": "node scripts/build-worker.mjs && next build",
     "start": "next start -p 3001",
+    "typecheck": "tsc --noEmit",
+    "test:offline": "tsx scripts/capcheck.mts && tsx scripts/mergecheck.mts && tsx scripts/qrcheck.mts && tsx scripts/retrycheck.mts",
     "lint": "eslint"
   },
   "dependencies": {

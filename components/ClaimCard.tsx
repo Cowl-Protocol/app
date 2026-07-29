@@ -160,7 +160,7 @@ export default function ClaimCard() {
     }
   }, [shielded]);
 
-  const xHandle = info?.xHandle ?? "cowlprotocol";
+  const xHandle = info?.xHandle ?? "cowlprotocoll";
 
   // Each step carries what to say before it's done, and what it became once
   // it is — the card should read like a receipt as you move down it.

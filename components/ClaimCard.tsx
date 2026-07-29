@@ -59,12 +59,15 @@ type SessionInfo = {
   handle?: string;
   xid?: string;
   accountOk?: boolean;
+  // Everything past `status` is optional on purpose: the page and the claim
+  // service ship separately, so a field the running API predates must degrade
+  // to a quieter card, never to a crash.
   claim?: {
     status: string;
-    txHash: string | null;
-    ahead: number;
-    explorer: string;
-    zcowl: string;
+    txHash?: string | null;
+    ahead?: number;
+    explorer?: string;
+    zcowl?: string;
   } | null;
 };
 
@@ -204,7 +207,7 @@ export default function ClaimCard() {
       d: "Connect a wallet and sign once — the address only you can read into",
       // Once claimed the destination is settled, so name it from the claim
       // rather than from keys this session may not have derived yet.
-      done: claimed
+      done: claimed?.zcowl
         ? `Paying out to ${claimed.zcowl.slice(0, 16)}…`
         : wallet.address && shielded.paymentAddress
           ? `${shortAddr(wallet.address)} → ${shielded.paymentAddress.slice(0, 16)}…`
@@ -218,9 +221,11 @@ export default function ClaimCard() {
       done: claimed
         ? claimed.status === "sent"
           ? "Delivered to your shielded balance"
-          : claimed.ahead > 0
-            ? `In line — ${claimed.ahead} ahead of you`
-            : "Yours is next"
+          : typeof claimed.ahead !== "number"
+            ? "Queued for delivery"
+            : claimed.ahead > 0
+              ? `In line — ${claimed.ahead} ahead of you`
+              : "Yours is next"
         : null,
     },
   ];
@@ -337,7 +342,7 @@ export default function ClaimCard() {
                   <Link href="/portfolio" className="text-muted hover:text-bone transition-colors">
                     shielded balance
                   </Link>
-                  {claimed.txHash && (
+                  {claimed.txHash && claimed.explorer && (
                     <>
                       {" · "}
                       <a

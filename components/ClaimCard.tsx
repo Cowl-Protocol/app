@@ -141,7 +141,8 @@ export default function ClaimCard() {
   // Sent as a link the browser follows, not a fetch: X's consent screen is a
   // full page. The return origin rides along so the round trip lands back on
   // the host the user actually typed, keeping page and cookie on one site.
-  const signIn = useCallback(() => {
+  const signIn = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
     const url = new URL(`${apiBase()}/auth/x/login`);
     url.searchParams.set("return", window.location.origin);
     window.location.assign(url.toString());
@@ -296,12 +297,15 @@ export default function ClaimCard() {
               Batch one is fully claimed
             </button>
           ) : step === 1 ? (
-            <button
+            // A real link, so sign-in still works if the page never hydrates;
+            // the click handler only upgrades it with the return origin.
+            <a
+              href={`${CONFIGURED_API}/auth/x/login`}
               onClick={signIn}
-              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:opacity-90 transition-opacity"
+              className="block w-full label-mono text-sm py-4 bg-acid text-ink text-center hover:opacity-90 transition-opacity"
             >
               Sign in with X
-            </button>
+            </a>
           ) : step === 2 ? (
             <button
               onClick={() => setFollowed(true)}

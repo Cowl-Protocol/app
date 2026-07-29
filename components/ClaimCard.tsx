@@ -355,7 +355,7 @@ export default function ClaimCard() {
                     <button
                       onClick={wallet.address ? unlock : wallet.connect}
                       disabled={busy}
-                      className="mt-1.5 label-mono text-[0.68rem] text-acid hover:text-bone transition-colors disabled:opacity-50"
+                      className="mt-2 px-3 py-2 bg-ink3 text-acid label-mono text-[0.68rem] hover:bg-ink transition-colors disabled:text-faint"
                     >
                       {!wallet.address
                         ? "Connect wallet →"

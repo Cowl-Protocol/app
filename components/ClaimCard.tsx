@@ -59,7 +59,13 @@ type SessionInfo = {
   handle?: string;
   xid?: string;
   accountOk?: boolean;
-  claim?: { status: string; txHash: string | null; ahead: number; explorer: string } | null;
+  claim?: {
+    status: string;
+    txHash: string | null;
+    ahead: number;
+    explorer: string;
+    zcowl: string;
+  } | null;
 };
 
 /** The exact text the wallet signs — one shape here and on the server. */
@@ -196,8 +202,11 @@ export default function ClaimCard() {
     {
       k: "Open your shielded address",
       d: "Connect a wallet and sign once — the address only you can read into",
-      done:
-        wallet.address && shielded.paymentAddress
+      // Once claimed the destination is settled, so name it from the claim
+      // rather than from keys this session may not have derived yet.
+      done: claimed
+        ? `Paying out to ${claimed.zcowl.slice(0, 16)}…`
+        : wallet.address && shielded.paymentAddress
           ? `${shortAddr(wallet.address)} → ${shielded.paymentAddress.slice(0, 16)}…`
           : wallet.address
             ? `${shortAddr(wallet.address)} connected — one sign to open`
@@ -241,10 +250,19 @@ export default function ClaimCard() {
               {LIVE && info ? `${info.amount} COWL` : "—"}
             </p>
           </div>
+          {/* What is left, not what is gone — the number a first-come batch
+              is actually asking you to read. */}
           <div className="bg-ink2 p-3.5">
-            <p className="label-soft text-faint mb-1.5">Claimed</p>
+            <p className="label-soft text-faint mb-1.5">Spots left</p>
             <p className="font-data text-xl text-bone tracking-tight">
-              {LIVE && info ? `${info.claimed} / ${info.quota}` : "—"}
+              {LIVE && info ? (
+                <>
+                  {Math.max(0, info.quota - info.claimed)}{" "}
+                  <span className="text-sm text-muted">of {info.quota}</span>
+                </>
+              ) : (
+                "—"
+              )}
             </p>
           </div>
         </div>

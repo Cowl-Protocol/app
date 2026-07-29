@@ -59,12 +59,21 @@ export default function ClaimCard() {
     }
   }, []);
 
+  // Keep the card current: retry a failed first load, tick the claimed
+  // counter along, and catch up the moment the tab regains focus (the usual
+  // return path from the X consent screen).
   useEffect(() => {
     if (!LIVE) return;
     refresh();
+    const tick = setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
     if (new URLSearchParams(window.location.search).get("login") === "failed") {
       setError("X didn't complete the sign-in. Try again.");
     }
+    return () => {
+      clearInterval(tick);
+      window.removeEventListener("focus", refresh);
+    };
   }, [refresh]);
 
   const claimed = info?.claim ?? null;

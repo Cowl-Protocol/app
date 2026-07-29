@@ -71,6 +71,30 @@ type SessionInfo = {
   } | null;
 };
 
+// Where a wallet's payment address is remembered between visits.
+//
+// The address only, never the keys: it is the string you publish to be paid,
+// while the keys that read the book stay derived-per-session by design. Caching
+// it means a reload can show where a reward is headed, and claim, without
+// asking for another signature. Keyed by wallet, since each derives its own.
+const ADDR_CACHE = "cowl.claim.payto.v1.";
+
+function rememberAddress(wallet: string, zcowl: string) {
+  try {
+    localStorage.setItem(ADDR_CACHE + wallet.toLowerCase(), zcowl);
+  } catch {
+    /* private mode or a full quota — the flow still works, it just re-derives */
+  }
+}
+
+function recallAddress(wallet: string): string | null {
+  try {
+    return localStorage.getItem(ADDR_CACHE + wallet.toLowerCase());
+  } catch {
+    return null;
+  }
+}
+
 /** The exact text the wallet signs — one shape here and on the server. */
 function claimMessage(xid: string, wallet: string, zcowl: string, issuedAt: string): string {
   return `Cowl airdrop batch 1\nX account: ${xid}\nWallet: ${wallet}\nDeliver to: ${zcowl}\nIssued: ${issuedAt}`;
@@ -122,6 +146,25 @@ export default function ClaimCard() {
   // the moment between the click and the next poll.
   const followed = info?.followed === true || followedNow;
 
+  const [cachedAddr, setCachedAddr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCachedAddr(wallet.address ? recallAddress(wallet.address) : null);
+  }, [wallet.address]);
+
+  useEffect(() => {
+    if (wallet.address && shielded.paymentAddress) {
+      rememberAddress(wallet.address, shielded.paymentAddress);
+      setCachedAddr(shielded.paymentAddress);
+    }
+  }, [wallet.address, shielded.paymentAddress]);
+
+  // Where the reward goes. A claim already made settles it; otherwise this
+  // session's unlock, and failing that what this wallet used last time.
+  const payTo = claimed?.zcowl ?? shielded.paymentAddress ?? cachedAddr ?? null;
+  // True when the book itself is open, not merely its address known.
+  const bookOpen = Boolean(shielded.paymentAddress);
+
   // Record the follow so a reload never asks again. If the call fails the
   // local flag still carries this session — the step is an honour check.
   const markFollowed = useCallback(() => {
@@ -134,24 +177,24 @@ export default function ClaimCard() {
     if (!info?.signedIn) return 1;
     if (claimed) return 5;
     if (!followed) return 2;
-    if (!wallet.address || shielded.status !== "ready" || !shielded.paymentAddress) return 3;
+    if (!wallet.address || !payTo) return 3;
     return 4;
-  }, [info, claimed, followed, wallet.address, shielded.status, shielded.paymentAddress]);
+  }, [info, claimed, followed, wallet.address, payTo]);
 
   const submit = useCallback(async () => {
-    if (!info?.xid || !wallet.address || !shielded.paymentAddress) return;
+    if (!info?.xid || !wallet.address || !payTo) return;
     setBusy(true);
     setError(null);
     try {
       const issuedAt = new Date().toISOString();
       const signature = await signMessageAsync({
-        message: claimMessage(info.xid, wallet.address, shielded.paymentAddress, issuedAt),
+        message: claimMessage(info.xid, wallet.address, payTo, issuedAt),
       });
       const res = await fetch(`${apiBase()}/api/claim`, {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ wallet: wallet.address, zcowl: shielded.paymentAddress, signature, issuedAt }),
+        body: JSON.stringify({ wallet: wallet.address, zcowl: payTo, signature, issuedAt }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "try again");
@@ -161,7 +204,7 @@ export default function ClaimCard() {
     } finally {
       setBusy(false);
     }
-  }, [info, wallet.address, shielded.paymentAddress, signMessageAsync, refresh]);
+  }, [info, wallet.address, payTo, signMessageAsync, refresh]);
 
   // Sent as a link the browser follows, not a fetch: X's consent screen is a
   // full page. The return origin rides along so the round trip lands back on
@@ -205,15 +248,13 @@ export default function ClaimCard() {
     {
       k: "Open your shielded address",
       d: "Connect a wallet and sign once — the address only you can read into",
-      // Once claimed the destination is settled, so name it from the claim
-      // rather than from keys this session may not have derived yet.
-      done: claimed?.zcowl
-        ? `Paying out to ${claimed.zcowl.slice(0, 16)}…`
-        : wallet.address && shielded.paymentAddress
-          ? `${shortAddr(wallet.address)} → ${shielded.paymentAddress.slice(0, 16)}…`
-          : wallet.address
-            ? `${shortAddr(wallet.address)} connected — one sign to open`
-            : null,
+      // Known from the claim, this session's unlock, or last visit — all three
+      // name the same destination, so the row reads the same after a reload.
+      done: payTo
+        ? `${claimed ? "Paying out to" : "Receiving at"} ${payTo.slice(0, 16)}…`
+        : wallet.address
+          ? `${shortAddr(wallet.address)} connected — one sign to open`
+          : null,
     },
     {
       k: "Claim",
@@ -306,6 +347,17 @@ export default function ClaimCard() {
                     <p className="text-xs text-acid mt-0.5 font-data break-all">{s.done}</p>
                   ) : (
                     <p className="text-xs text-muted mt-0.5">{s.d}</p>
+                  )}
+                  {/* The book stays closed until it is opened for real — the
+                      way back in has to be here at every stage, claimed or not. */}
+                  {LIVE && n === 3 && wallet.address && !bookOpen && (
+                    <button
+                      onClick={unlock}
+                      disabled={busy}
+                      className="mt-1.5 label-mono text-[0.68rem] text-acid hover:text-bone transition-colors disabled:opacity-50"
+                    >
+                      {busy ? "Opening…" : payTo ? "Open it to see what's inside →" : "Open shielded address →"}
+                    </button>
                   )}
                 </div>
               </div>

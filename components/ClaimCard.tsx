@@ -53,6 +53,7 @@ type SessionInfo = {
   minAgeDays: number;
   xHandle: string;
   signedIn: boolean;
+  expired?: boolean;
   handle?: string;
   xid?: string;
   accountOk?: boolean;
@@ -167,7 +168,9 @@ export default function ClaimCard() {
   const STEPS = [
     {
       k: "Sign in with X",
-      d: "One account, one claim. We read your handle and nothing else",
+      d: info?.expired
+        ? "Your sign-in timed out. Sign in again to pick up where you left off"
+        : "One account, one claim. We read your handle and nothing else",
       done: info?.signedIn ? `Signed in as @${info.handle}` : null,
     },
     {

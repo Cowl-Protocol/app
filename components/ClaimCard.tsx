@@ -15,8 +15,9 @@ import { useShielded } from "./ShieldedProvider";
 import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
 
-// Flips the day batch one opens.
-const LIVE = false;
+// Flips the day batch one opens. Off unless the environment says otherwise,
+// so a local .env.local can light it up without touching code.
+const LIVE = process.env.NEXT_PUBLIC_CLAIM_LIVE === "1";
 
 const CLAIM_API = process.env.NEXT_PUBLIC_CLAIM_API ?? "https://claim.cowlprotocol.com";
 

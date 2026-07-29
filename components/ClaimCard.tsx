@@ -19,7 +19,31 @@ import InfoTip from "./InfoTip";
 // so a local .env.local can light it up without touching code.
 const LIVE = process.env.NEXT_PUBLIC_CLAIM_LIVE === "1";
 
-const CLAIM_API = process.env.NEXT_PUBLIC_CLAIM_API ?? "https://claim.cowlprotocol.com";
+const CONFIGURED_API = process.env.NEXT_PUBLIC_CLAIM_API ?? "https://claim.cowlprotocol.com";
+
+/**
+ * The API URL to actually call.
+ *
+ * Locally the session cookie is the whole game: a page on localhost talking to
+ * an API on 127.0.0.1 is cross-SITE to a browser, so the cookie is dropped and
+ * the user looks permanently signed out however well the login went. Keeping
+ * the API on whichever loopback name the page was opened with keeps them one
+ * site, so the cookie rides along. Real hosts are left alone.
+ */
+function apiBase(): string {
+  if (typeof window === "undefined") return CONFIGURED_API;
+  try {
+    const api = new URL(CONFIGURED_API);
+    const loopback = ["localhost", "127.0.0.1", "[::1]", "::1"];
+    if (loopback.includes(api.hostname) && loopback.includes(window.location.hostname)) {
+      api.hostname = window.location.hostname;
+      return api.origin;
+    }
+  } catch {
+    /* configured value isn't a URL; fall through and use it as given */
+  }
+  return CONFIGURED_API;
+}
 
 type SessionInfo = {
   amount: string;
@@ -53,11 +77,11 @@ export default function ClaimCard() {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(`${CLAIM_API}/api/session`, { credentials: "include" });
+      const res = await fetch(`${apiBase()}/api/session`, { credentials: "include" });
       setInfo(await res.json());
       setApiDown(false);
     } catch {
-      console.error(`claim service unreachable at ${CLAIM_API}`);
+      console.error(`claim service unreachable at ${apiBase()}`);
       setInfo(null);
       setApiDown(true);
     }
@@ -98,7 +122,7 @@ export default function ClaimCard() {
       const signature = await signMessageAsync({
         message: claimMessage(info.xid, wallet.address, shielded.paymentAddress, issuedAt),
       });
-      const res = await fetch(`${CLAIM_API}/api/claim`, {
+      const res = await fetch(`${apiBase()}/api/claim`, {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
@@ -113,6 +137,15 @@ export default function ClaimCard() {
       setBusy(false);
     }
   }, [info, wallet.address, shielded.paymentAddress, signMessageAsync, refresh]);
+
+  // Sent as a link the browser follows, not a fetch: X's consent screen is a
+  // full page. The return origin rides along so the round trip lands back on
+  // the host the user actually typed, keeping page and cookie on one site.
+  const signIn = useCallback(() => {
+    const url = new URL(`${apiBase()}/auth/x/login`);
+    url.searchParams.set("return", window.location.origin);
+    window.location.assign(url.toString());
+  }, []);
 
   const unlock = useCallback(async () => {
     setBusy(true);
@@ -263,12 +296,12 @@ export default function ClaimCard() {
               Batch one is fully claimed
             </button>
           ) : step === 1 ? (
-            <a
-              href={`${CLAIM_API}/auth/x/login`}
-              className="block w-full label-mono text-sm py-4 bg-acid text-ink text-center hover:opacity-90 transition-opacity"
+            <button
+              onClick={signIn}
+              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:opacity-90 transition-opacity"
             >
               Sign in with X
-            </a>
+            </button>
           ) : step === 2 ? (
             <button
               onClick={() => setFollowed(true)}

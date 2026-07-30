@@ -19,9 +19,11 @@ export default function Portfolio() {
   const wallet = useWallet();
   // Read once here: the public card renders it, and the private card borrows it
   // to name and price the tokens it finds. Two reads would drift.
-  const { assets: publicAssets, loading: publicLoading } = useAssets(
-    wallet.address as `0x${string}` | null,
-  );
+  const {
+    assets: publicAssets,
+    loading: publicLoading,
+    refresh: refreshPublic,
+  } = useAssets(wallet.address as `0x${string}` | null);
 
   return (
     <div className="min-h-screen flex flex-col grain">
@@ -44,7 +46,12 @@ export default function Portfolio() {
               default with privacy as an extra. */}
           <div className="grid md:grid-cols-2 gap-4 items-start">
             <PrivateCard wallet={wallet} publicAssets={publicAssets} />
-            <PublicCard wallet={wallet} assets={publicAssets} loading={publicLoading} />
+            <PublicCard
+              wallet={wallet}
+              assets={publicAssets}
+              loading={publicLoading}
+              onRefresh={refreshPublic}
+            />
           </div>
         </div>
       </main>
@@ -58,22 +65,44 @@ function PublicCard({
   wallet,
   assets,
   loading,
+  onRefresh,
 }: {
   wallet: WalletState;
   assets: Asset[];
   loading: boolean;
+  onRefresh: () => void;
 }) {
   // The same assets the picker offers, read the same way — one source, so a
   // balance can never be right on one screen and blank on the other.
   const { total, priced } = totalUsd(assets);
+  // The first read has nothing to show yet; every later one is a refresh over
+  // numbers already on screen, and says so in the button rather than at the
+  // bottom of the list.
+  const firstRead = loading && assets.length === 0;
 
   return (
     <div className="bg-card p-5 fade-up">
       <div className="flex items-center justify-between mb-5">
         <span className="label-mono text-[0.72rem] text-bone">Public</span>
         {wallet.address ? (
-          <span className="font-data text-[0.68rem] text-muted px-2 py-1 bg-ink2">
-            {shortAddr(wallet.address)}
+          <span className="flex items-center gap-3">
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              className="label-soft text-muted hover:text-bone disabled:hover:text-muted"
+            >
+              {loading ? (
+                <span className="flex items-center gap-1.5">
+                  <Spinner className="h-3 w-3" />
+                  Reading
+                </span>
+              ) : (
+                "Refresh"
+              )}
+            </button>
+            <span className="font-data text-[0.68rem] text-muted px-2 py-1 bg-ink2">
+              {shortAddr(wallet.address)}
+            </span>
           </span>
         ) : (
           <span className="label-mono text-[0.62rem] text-faint px-2 py-1 bg-ink2">
@@ -99,7 +128,7 @@ function PublicCard({
             {assets.map((a) => (
               <AssetRow key={a.token.address} asset={a} loading={loading} />
             ))}
-            {loading && (
+            {firstRead && (
               <p className="flex items-center gap-2 px-1 py-2 text-xs text-faint">
                 <Spinner className="h-3 w-3" />
                 Looking for your tokens

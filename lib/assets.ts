@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { activeNetwork } from "./networks";
 import { fetchHoldings } from "./holdings";
 import { fetchTokenPriceUsd } from "./tokenPrice";
@@ -72,10 +72,28 @@ export async function fetchAssets(owner: `0x${string}` | null): Promise<Asset[]>
   );
 }
 
-/** Assets for an address: the native coin, everything it holds, then the curated rest. */
-export function useAssets(owner: `0x${string}` | null): { assets: Asset[]; loading: boolean } {
+/**
+ * Assets for an address: the native coin, everything it holds, then the curated rest.
+ *
+ * `refresh` reads again on demand. This side of the book is discovered through
+ * the explorer's index, which trails the chain by a little, and the read fires
+ * once per address — so a balance that has just moved keeps showing its old
+ * number until something asks again. Withdrawing to your own wallet and finding
+ * the public card unchanged is exactly that, and reloading the page is not an
+ * answer anyone should have to find. The private book already hands the owner
+ * that button; this gives the public one the same.
+ */
+export function useAssets(owner: `0x${string}` | null): {
+  assets: Asset[];
+  loading: boolean;
+  refresh: () => void;
+} {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
+  // Bumped to read the same address again. The previous answer stays on screen
+  // while the new one is on its way: a refresh that blanks the balances would
+  // look like the wallet emptied.
+  const [reads, setReads] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -88,9 +106,9 @@ export function useAssets(owner: `0x${string}` | null): { assets: Asset[]; loadi
     return () => {
       alive = false;
     };
-  }, [owner]);
+  }, [owner, reads]);
 
-  return { assets, loading };
+  return { assets, loading, refresh: useCallback(() => setReads((n) => n + 1), []) };
 }
 
 /**

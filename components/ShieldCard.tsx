@@ -19,6 +19,7 @@ import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
 import Spinner from "./Spinner";
+import SyncMark from "./SyncMark";
 
 type WalletState = ReturnType<typeof useWallet>;
 
@@ -310,7 +311,7 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               MAX
             </button>
           )}
-          {shielded.syncing && <Spinner className="h-3 w-3 text-acid" />}
+          <SyncMark />
         </>
       ) : mode === "unshield" ? (
         // Unshield's main button already offers the unlock. Two ways to do the

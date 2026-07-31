@@ -52,6 +52,7 @@ import {
 } from "@/lib/shielded/pool";
 import { loadPool, loadWallet, savePool, saveWallet } from "@/lib/shielded/store";
 import { syncShieldedPool } from "@/lib/shielded/sync";
+import { awaitSync, singleFlight } from "@/lib/shielded/refresh";
 import {
   approvePool,
   fieldToAddress,
@@ -104,6 +105,17 @@ type ShieldedContextValue = {
   paymentAddress: string | null;
   balances: Balance;
   syncing: boolean;
+  /**
+   * The last chain read did not land, so what is on screen is the stored book.
+   *
+   * Distinct from `syncing` on purpose. A spinner says "working"; when every
+   * endpoint that serves history is refusing, nothing is working, and a screen
+   * that keeps saying it is has told the user the one thing it does not know.
+   * Clears by itself if a slow read lands later.
+   */
+  syncStale: boolean;
+  /** The block the stored book is synced to, so "stale" can name how stale. */
+  syncedBlock: string | null;
   progress: OpProgress | null;
   poolReady: boolean;
   unlock: () => Promise<void>;
@@ -244,6 +256,22 @@ async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | null> 
 const RECORD_DEADLINE = 25_000;
 
 /**
+ * How long a balance refresh waits before it says so.
+ *
+ * Nothing bounded this wait, and the failure it left behind was silent: with
+ * every endpoint that serves history refusing at once — publicnode wants a
+ * token for archive reads, the explorer rate-limits, and a hijacked resolver
+ * can take the third away entirely — the read never settles, the spinner never
+ * stops, and the screen offers no way to tell "still working" from "there is
+ * nothing left to ask".
+ *
+ * Well above an incremental read, which only covers the blocks since the last
+ * one. A first full replay can legitimately outrun it, and being told the book
+ * on screen is the stored one is true while that is happening.
+ */
+const REFRESH_DEADLINE = 30_000;
+
+/**
  * Hold before a part, so a spread's window is actually observed.
  *
  * The wait is published with the moment it ends rather than a countdown of its
@@ -299,6 +327,8 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
   const [balances, setBalances] = useState<Balance>([]);
   const [sendable, setSendable] = useState<{ token: bigint; max: bigint }[]>([]);
   const [syncing, setSyncing] = useState(false);
+  const [syncStale, setSyncStale] = useState(false);
+  const [syncedBlock, setSyncedBlock] = useState<string | null>(null);
   const [progress, setProgress] = useState<OpProgress | null>(null);
 
   const walletClientRef = useRef(walletClient);
@@ -323,7 +353,17 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
     saveWallet(net.key, k, wallet);
     setBalances(computeBalance(wallet));
     setSendable(sendableCaps(wallet));
+    setSyncedBlock(pool.syncedBlock ?? null);
   }, []);
+
+  // One chain read at a time, shared. The read is settled into a word first:
+  // a deadline nobody is waiting on any more must not leave an unhandled
+  // rejection behind.
+  const oneSync = useRef(singleFlight<"ok" | "failed">()).current;
+  const runSync = useCallback(
+    () => oneSync(() => syncShieldedPool().then(() => "ok" as const, () => "failed" as const)),
+    [oneSync],
+  );
 
   const refreshWith = useCallback(
     async (k: ShieldedKeys) => {
@@ -335,14 +375,30 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       // when it lands.
       scanAndPublish(k);
       setSyncing(true);
-      try {
-        await syncShieldedPool();
-        scanAndPublish(k);
-      } finally {
-        setSyncing(false);
+      setSyncStale(false);
+
+      // The wait is bounded; the work is not. Stopping the spinner is only half
+      // of it — a screen that quietly stops looking busy while still showing
+      // yesterday's book has replaced a confusing truth with a comfortable
+      // wrong answer, so the stale mark goes up in the same breath.
+      const read = runSync();
+      const { publish, stale, outlived } = await awaitSync(read, REFRESH_DEADLINE);
+      if (publish) scanAndPublish(k);
+      setSyncing(false);
+      setSyncStale(stale);
+
+      // A read that outlived the deadline still lands eventually. When it does,
+      // republish and take the mark down, so a slow endpoint corrects itself
+      // rather than waiting for someone to press refresh.
+      if (outlived) {
+        void read.then((late) => {
+          if (late !== "ok" || keysRef.current !== k) return;
+          scanAndPublish(k);
+          setSyncStale(false);
+        });
       }
     },
-    [scanAndPublish],
+    [scanAndPublish, runSync],
   );
 
   const keysRef = useRef<ShieldedKeys | null>(null);
@@ -1241,6 +1297,8 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       paymentAddress: keys?.paymentAddress ?? null,
       balances,
       syncing,
+      syncStale,
+      syncedBlock,
       progress,
       poolReady: Boolean(net.contracts.pool),
       unlock,
@@ -1261,6 +1319,8 @@ export default function ShieldedProvider({ children }: { children: ReactNode }) 
       keys,
       balances,
       syncing,
+      syncStale,
+      syncedBlock,
       progress,
       unlock,
       lock,

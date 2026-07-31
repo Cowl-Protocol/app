@@ -32,6 +32,7 @@ import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
 import Spinner from "./Spinner";
+import SyncMark from "./SyncMark";
 
 type WalletState = ReturnType<typeof useWallet>;
 
@@ -196,7 +197,11 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
   if (tradeQuote.state === "unpriceable") label = `No venue route for ${receive.symbol}`;
   // Not while the book is still being read — an empty balance mid-sync is
   // "unknown", not "shield first".
-  if (unlocked && balance === 0n && !shielded.syncing) label = `Shield ${inMeta.symbol} first`;
+  // Not while the book on screen is the stored one: a balance we could not
+  // read is not a balance of zero, and this line would send someone to go
+  // shield funds they already hold.
+  if (unlocked && balance === 0n && !shielded.syncing && !shielded.syncStale)
+    label = `Shield ${inMeta.symbol} first`;
   if (overBalance) {
     label = feeTrapped
       ? "Not enough for the trade plus the relayer fee"
@@ -357,7 +362,7 @@ export default function SwapCard({ wallet }: { wallet: WalletState }) {
                 <span title={`${formatUnitsExact(balance, inMeta.decimals)} ${inMeta.symbol} shielded`}>
                   {formatBalanceShort(balance, inMeta.decimals)} {inMeta.symbol} shielded
                 </span>
-                {shielded.syncing && <Spinner className="h-3 w-3 text-acid" />}
+                <SyncMark />
               </span>
             )}
           </div>

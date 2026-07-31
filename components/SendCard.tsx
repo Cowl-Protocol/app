@@ -33,6 +33,7 @@ import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
 import QrCode from "./QrCode";
 import Spinner from "./Spinner";
+import SyncMark from "./SyncMark";
 
 type WalletState = ReturnType<typeof useWallet>;
 export type Tab = "send" | "receive";
@@ -421,7 +422,7 @@ export default function SendCard({ wallet, tab }: { wallet: WalletState; tab: Ta
                   ) : (
                     <span>nothing shielded yet</span>
                   )}
-                  {shielded.syncing && <Spinner className="h-3 w-3 text-acid" />}
+                  <SyncMark />
                 </span>
               </div>
               <div className="flex items-center gap-3">
@@ -817,16 +818,21 @@ function ReceivePanel({ copied, onCopy }: { copied: boolean; onCopy: (text: stri
         <div className="bg-ink2 p-4 mt-3">
           <div className="flex items-center justify-between mb-2 gap-3">
             <span className="label-soft text-faint">What has arrived</span>
-            <button onClick={() => shielded.refresh()} className="label-soft text-muted hover:text-bone">
-              {shielded.syncing ? (
-                <span className="flex items-center gap-1.5">
-                  <Spinner className="h-3 w-3" />
-                  Scanning
-                </span>
-              ) : (
-                "Scan for payments"
-              )}
-            </button>
+            <span className="flex items-center gap-2">
+              <SyncMark />
+              <button onClick={() => shielded.refresh()} className="label-soft text-muted hover:text-bone">
+                {shielded.syncing ? (
+                  <span className="flex items-center gap-1.5">
+                    <Spinner className="h-3 w-3" />
+                    Scanning
+                  </span>
+                ) : shielded.syncStale ? (
+                  "Retry scan"
+                ) : (
+                  "Scan for payments"
+                )}
+              </button>
+            </span>
           </div>
           {shielded.balances.length === 0 ? (
             <p className="text-xs text-muted leading-relaxed">

@@ -7,6 +7,7 @@ import { ensureTokenMeta } from "@/lib/tokenMeta";
 import { useAssets, useShieldedAssets, totalUsd, type Asset } from "@/lib/assets";
 import AssetRow from "@/components/AssetRow";
 import Spinner from "@/components/Spinner";
+import SyncMark from "@/components/SyncMark";
 import { useShielded } from "@/components/ShieldedProvider";
 import Header from "@/components/Header";
 import Banner from "@/components/Banner";
@@ -213,6 +214,7 @@ function PrivateCard({ wallet, publicAssets }: { wallet: WalletState; publicAsse
         </span>
         {unlocked ? (
           <span className="flex items-center gap-3">
+            <SyncMark />
             <button
               onClick={() => shielded.refresh()}
               className="label-soft text-muted hover:text-bone"
@@ -222,6 +224,8 @@ function PrivateCard({ wallet, publicAssets }: { wallet: WalletState; publicAsse
                   <Spinner className="h-3 w-3" />
                   Syncing
                 </span>
+              ) : shielded.syncStale ? (
+                "Retry"
               ) : (
                 "Refresh"
               )}

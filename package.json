@@ -2,6 +2,7 @@
   "name": "cowl-app",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "node scripts/build-worker.mjs && next dev -p 3001",
     "build": "node scripts/envcheck.mjs && node scripts/build-worker.mjs && next build",

@@ -11,7 +11,8 @@ name: CI
 # serving this chain's history refused at once and the spinner never stopped,
 # the rule that the way out never offers an amount two notes cannot carry, and
 # the rule that a throttled endpoint falls through to the next one instead of
-# stopping the chain, which cost minutes per operation when it did not.
+# stopping the chain, which cost minutes per operation when it did not, and the
+# rule that the wallet card never reports less than the chain says is there.
 # They need no network and finish in under a second each.
 #
 # The rest are left out on purpose, and the reasons differ:

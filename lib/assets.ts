@@ -44,7 +44,28 @@ function curatedPlaceholders(held: Set<string>): Token[] {
   });
 }
 
-export async function fetchAssets(owner: `0x${string}` | null): Promise<Asset[]> {
+/**
+ * Tokens to ask the chain about whatever the explorer says.
+ *
+ * The curated list, plus anything the caller knows is in play. A wallet holding
+ * a token the explorer's balance index has not caught up on is not a wallet
+ * holding nothing of it, and the portfolio reported exactly that.
+ */
+function alwaysRead(extra: `0x${string}`[]): `0x${string}`[] {
+  const out = new Set<string>();
+  for (const t of TOKENS) {
+    if (t.native || /^0x0{40}$/i.test(t.address)) continue;
+    out.add(t.address.toLowerCase());
+  }
+  for (const a of extra) out.add(a.toLowerCase());
+  return [...out] as `0x${string}`[];
+}
+
+export async function fetchAssets(
+  owner: `0x${string}` | null,
+  /** Extra token addresses to read from the chain — the shielded book's, typically. */
+  extra: `0x${string}`[] = [],
+): Promise<Asset[]> {
   const native = TOKENS[0]!;
   if (!owner) {
     return [{ token: native, balance: null, price: await fetchTokenPriceUsd(native), status: "unasked" }];
@@ -52,7 +73,7 @@ export async function fetchAssets(owner: `0x${string}` | null): Promise<Asset[]>
 
   const [nativeBalance, holdings] = await Promise.all([
     fetchBalance(owner, native).catch(() => null),
-    fetchHoldings(owner),
+    fetchHoldings(owner, alwaysRead(extra)),
   ]);
 
   const heldAddresses = new Set(holdings.map((h) => h.token.address.toLowerCase()));
@@ -83,7 +104,11 @@ export async function fetchAssets(owner: `0x${string}` | null): Promise<Asset[]>
  * answer anyone should have to find. The private book already hands the owner
  * that button; this gives the public one the same.
  */
-export function useAssets(owner: `0x${string}` | null): {
+export function useAssets(
+  owner: `0x${string}` | null,
+  /** Token addresses to read from the chain even if the explorer omits them. */
+  extra: `0x${string}`[] = [],
+): {
   assets: Asset[];
   loading: boolean;
   refresh: () => void;
@@ -94,11 +119,12 @@ export function useAssets(owner: `0x${string}` | null): {
   // while the new one is on its way: a refresh that blanks the balances would
   // look like the wallet emptied.
   const [reads, setReads] = useState(0);
+  const extraKey = extra.join(",");
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    fetchAssets(owner).then((a) => {
+    fetchAssets(owner, extraKey ? (extraKey.split(",") as `0x${string}`[]) : []).then((a) => {
       if (!alive) return;
       setAssets(a);
       setLoading(false);
@@ -106,7 +132,9 @@ export function useAssets(owner: `0x${string}` | null): {
     return () => {
       alive = false;
     };
-  }, [owner, reads]);
+    // Keyed by the joined list rather than the array, or a fresh array on every
+    // render would re-read the chain on every render.
+  }, [owner, reads, extraKey]);
 
   return { assets, loading, refresh: useCallback(() => setReads((n) => n + 1), []) };
 }

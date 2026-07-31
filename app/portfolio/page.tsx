@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useWallet, shortAddr } from "@/lib/useWallet";
 import { ensureTokenMeta } from "@/lib/tokenMeta";
 import { useAssets, useShieldedAssets, totalUsd, type Asset } from "@/lib/assets";
+import { tokenAddressForField } from "@/lib/tokens";
 import AssetRow from "@/components/AssetRow";
 import Spinner from "@/components/Spinner";
 import SyncMark from "@/components/SyncMark";
@@ -18,13 +19,25 @@ type WalletState = ReturnType<typeof useWallet>;
 
 export default function Portfolio() {
   const wallet = useWallet();
+  const shielded = useShielded();
   // Read once here: the public card renders it, and the private card borrows it
   // to name and price the tokens it finds. Two reads would drift.
+  // The private book is the best hint the public one has about which tokens to
+  // ask the chain about. It knew about an unshielded AAPL the explorer's balance
+  // index had not caught up on, and without this the public card showed the
+  // wallet as holding none of it.
+  const shieldedTokens = useMemo(
+    () =>
+      shielded.balances
+        .map((b) => tokenAddressForField(b.token))
+        .filter((a): a is `0x${string}` => !!a),
+    [shielded.balances],
+  );
   const {
     assets: publicAssets,
     loading: publicLoading,
     refresh: refreshPublic,
-  } = useAssets(wallet.address as `0x${string}` | null);
+  } = useAssets(wallet.address as `0x${string}` | null, shieldedTokens);
 
   return (
     <div className="min-h-screen flex flex-col grain">

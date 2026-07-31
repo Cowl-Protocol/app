@@ -1,0 +1,50 @@
+version: 2
+
+# Dependency updates, opened as pull requests for a human to read.
+#
+# This repository builds a static export that is rsynced to the host, so its
+# dependencies never run in production — but they do run on the machine that
+# produces the bundle every wallet in the browser then executes. That makes a
+# build-time dependency the shortest path from a compromised package to
+# somebody's unlock signature, and the reason this file exists at all.
+#
+# Triage of what is currently outstanding, with reachability evidence, lives in
+# the cli repository at audits/supplychain/README.md.
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:40"
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ""
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:40"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: ""
+    ignore:
+      # Same two pins as the cli, for the same reason: the browser builds the
+      # identical proof against the identical deployed verifier, and the pool is
+      # immutable. A bump here breaks every in-app spend, not a build.
+      - dependency-name: "@aztec/bb.js"
+      - dependency-name: "@noir-lang/noir_js"
+      # qr 0.6.0 conflicts with RainbowKit's cuer dependency, which is why
+      # package.json carries an `overrides` entry pinning it back to 0.5.5 for
+      # that subtree. A bump reopens a conflict that has already been resolved
+      # once, by hand, and the override would hide it until something broke.
+      - dependency-name: "qr"

@@ -3,12 +3,13 @@ name: CI
 # Typecheck, the offline verify scripts, then a real production build.
 #
 # The verify scripts in scripts/ split cleanly in two, and only one half belongs
-# on a push. capcheck, mergecheck, qrcheck, retrycheck and synccheck are
-# properties of this source: denomination and cap arithmetic, note selection and
-# merge rounds, QR round-tripping, the resume-never-restart rule that was written
-# after a retry re-sent eight deposits that had already landed, and the rule that
-# a balance refresh stops waiting and says so, written after every endpoint
-# serving this chain's history refused at once and the spinner never stopped.
+# on a push. capcheck, mergecheck, qrcheck, retrycheck, synccheck and maxcheck
+# are properties of this source: denomination and cap arithmetic, note selection
+# and merge rounds, QR round-tripping, the resume-never-restart rule that was
+# written after a retry re-sent eight deposits that had already landed, the rule
+# that a balance refresh stops waiting and says so, written after every endpoint
+# serving this chain's history refused at once and the spinner never stopped,
+# and the rule that the way out never offers an amount two notes cannot carry.
 # They need no network and finish in under a second each.
 #
 # The rest are left out on purpose, and the reasons differ:

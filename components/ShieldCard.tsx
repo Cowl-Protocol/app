@@ -14,6 +14,8 @@ import { BETA_USD_CAP, overBetaCap } from "@/lib/betaLimits";
 import { parseWindow } from "@/lib/spread";
 import { shortAddr, type useWallet } from "@/lib/useWallet";
 import BoundaryConfirmModal, { type BoundaryMode } from "./BoundaryConfirmModal";
+import { MergeProgressModal } from "./SendCard";
+import { maxDeliverable, withdrawVerdict } from "@/lib/shielded/deliverable";
 import { useShielded } from "./ShieldedProvider";
 import TokenModal, { TokenGlyph } from "./TokenModal";
 import MaskLogo from "./MaskLogo";
@@ -101,6 +103,19 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const requiredTotal = execParts.reduce((s, p) => s + p, 0n);
 
   const shieldedBal = shielded.balanceOf(tokenField);
+  /**
+   * What one withdrawal can actually draw: the two largest notes, not the
+   * balance.
+   *
+   * A join-split reads two notes and writes two, so a book spread across three
+   * or more holds more than any single spend can move. Without this the MAX
+   * button wrote the whole balance, every check on screen passed, and the run
+   * died at planning on "no two notes cover it" — a wall someone hit by
+   * pressing the button the card offered them. Send and swap have carried this
+   * distinction since note selection was rebuilt; the way out never got it.
+   */
+  const sendable = shielded.sendableOf(tokenField);
+  const noteCount = shielded.balances.find((b) => b.token === tokenField)?.notes ?? 0;
   const unlocked = shielded.status === "ready";
 
   // What the shielded book actually holds, named and priced like any other
@@ -122,6 +137,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
    * back out at all. Withdrawals are never capped; this keeps that true.
    */
   const [selfPay, setSelfPay] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [mergePlan, setMergePlan] = useState<{ rounds: number; fee: bigint } | null>(null);
   const gasless = mode === "unshield" && !!relay && !selfPay;
   // The other half of the same question: what it costs when the wallet pays.
   const selfGas = useSelfGasEstimate(execParts.length, !gasless && value > 0n);
@@ -130,8 +147,21 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   // part of what the book has to cover. Leaving it out let an amount pass every
   // check on screen and then fail at planning, with the notes short by exactly
   // the fee nobody had counted.
-  const relayFeeTotal = gasless && relay ? relay.fee * BigInt(execParts.length) : 0n;
+  const relayFeePerPart = gasless && relay ? relay.fee : 0n;
+  const relayFeeTotal = relayFeePerPart * BigInt(execParts.length);
   const drawnFromNotes = requiredTotal + relayFeeTotal;
+
+  /**
+   * The largest withdrawal this book can deliver, merging included.
+   *
+   * Not the balance less one fee. Gathering a fragmented book down into two
+   * notes costs a relayed fee per round, and those fees come out of the same
+   * notes — n notes cost n − 1 rounds before the amount can leave. Subtracting
+   * a single fee writes a number no amount of merging ever reaches, and the run
+   * pays for every round before finding that out. Self-paid rounds cost the
+   * wallet instead, so this collapses back to the balance, which is correct.
+   */
+  const maxSendable = maxDeliverable(shieldedBal, noteCount, relayFeePerPart);
 
   /**
    * The relayer's fee as a share of what is being withdrawn.
@@ -163,6 +193,25 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
   const belowTier = !exact && value > 0n && parts.length === 0;
   const tooMany = !exact && parts.length > MAX_BOUNDARY_TXS;
   const needsUnlockFirst = mode === "unshield" && !unlocked;
+  /**
+   * Which of the three shapes of "no" applies, if any.
+   *
+   * One call rather than three conditions written out here, so the order they
+   * are tried in — and the arithmetic behind each — is the same thing the check
+   * beside it drives. It answers `ok` for a deposit, where none of this applies.
+   */
+  const verdict =
+    mode === "unshield" && unlocked
+      ? withdrawVerdict({
+          balance: shieldedBal,
+          sendable,
+          noteCount,
+          parts: execParts,
+          feePerPart: relayFeePerPart,
+        })
+      : "ok";
+  const overReach = verdict === "over-reach";
+  const overSendable = verdict === "merge-first";
   // Deposits only. The way out is never capped, whatever the size.
   const overCap = mode === "shield" && overBetaCap(amt, price);
   const ready =
@@ -173,6 +222,8 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     !belowTier &&
     !tooMany &&
     !overCap &&
+    !overReach &&
+    !overSendable &&
     !needsUnlockFirst;
 
   let label = "Enter an amount";
@@ -197,6 +248,12 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
         ? `Not enough for the amount plus the relayer fee`
         : `Insufficient ${mode === "shield" ? "" : "shielded "}${token.symbol}`;
   }
+  if (overReach) {
+    label = `Fees to gather it cap this at ${formatBalanceShort(maxSendable, token.decimals)} ${token.symbol}`;
+  }
+  // Just the action — the line above the button carries the numbers, and a
+  // full-precision amount wrapped the label onto two lines.
+  if (overSendable) label = "Merge notes first";
   if (needsUnlockFirst) label = "Unlock to see what you can withdraw";
 
   // Blocked by the fee, not by the withdrawal: the amount fits the notes and
@@ -210,6 +267,37 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
     requiredTotal > 0n &&
     requiredTotal <= shieldedBal &&
     drawnFromNotes > shieldedBal;
+
+  /**
+   * The cap is not a wall, it is the shape the book is in: two notes at a time.
+   * Merging fixes it, so the button that reports the cap is the button that
+   * clears it. A limit announced with no way past it is the dead end the unlock
+   * row used to be.
+   */
+  const merge = () => {
+    shielded.clearProgress();
+    setMergePlan(null);
+    setMerging(true);
+    shielded
+      // The withdrawal, not the draw: the run quotes the fee itself, per round,
+      // so it merges against today's price rather than what this card last read.
+      .planMerge({ tokenField, target: requiredTotal, selfPay })
+      .then(setMergePlan)
+      .catch(() => setMergePlan({ rounds: -1, fee: 0n }));
+  };
+
+  const executeMerge = () => {
+    shielded.clearProgress();
+    shielded
+      .consolidateExec({
+        tokenField,
+        symbol: token.symbol,
+        decimals: token.decimals,
+        target: requiredTotal,
+        selfPay,
+      })
+      .catch(() => {});
+  };
 
   const pick = (t: Token) => {
     setToken(t);
@@ -301,7 +389,9 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
               onClick={() =>
                 setAmount(
                   formatUnits(
-                    maxAfterFee(shieldedBal, gasless && relay ? relay.fee : 0n, token.decimals, exact),
+                    // The deliverable maximum, not the balance: it pays for the
+                    // merge rounds as well as the withdrawal. See maxSendable.
+                    maxAfterFee(maxSendable, relayFeePerPart, token.decimals, exact),
                     token.decimals,
                   ),
                 )
@@ -717,6 +807,13 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
                 "Unlock to see what you can withdraw"
               )}
             </button>
+          ) : overSendable ? (
+            <button
+              onClick={merge}
+              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors"
+            >
+              {label}
+            </button>
           ) : (
             <button
               onClick={() => ready && setConfirming(true)}
@@ -725,6 +822,13 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             >
               {label}
             </button>
+          )}
+          {overSendable && (
+            <p className="text-[0.7rem] text-faint leading-relaxed mt-3">
+              One spend reads two notes, and your two largest come to{" "}
+              {formatUnitsExact(sendable, token.decimals)} {token.symbol}. Merging combines them
+              into bigger notes, back to yourself, until this amount fits in two.
+            </p>
           )}
           {unlockError && <p className="text-xs text-[#ff6b6b] mt-2 text-center">{unlockError}</p>}
         </div>
@@ -765,6 +869,24 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
           }
           onClose={() => setPicking(false)}
           onSelect={pick}
+        />
+      )}
+
+      {/* Merging is a run of real transactions, one per round. Without a panel
+          of its own the wallet popped up over a card that looked idle. */}
+      {merging && (
+        <MergeProgressModal
+          symbol={token.symbol}
+          decimals={token.decimals}
+          gasless={gasless}
+          plan={mergePlan}
+          progress={shielded.progress}
+          onExecute={executeMerge}
+          onClose={() => {
+            setMerging(false);
+            setMergePlan(null);
+            shielded.clearProgress();
+          }}
         />
       )}
 

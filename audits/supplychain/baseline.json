@@ -1,0 +1,271 @@
+{
+  "installScripts": [
+    {
+      "name": "bufferutil",
+      "version": "4.1.0",
+      "dev": false,
+      "optional": false
+    },
+    {
+      "name": "esbuild",
+      "version": "0.28.1",
+      "dev": true,
+      "optional": false
+    },
+    {
+      "name": "fsevents",
+      "version": "2.3.3",
+      "dev": true,
+      "optional": true
+    },
+    {
+      "name": "keccak",
+      "version": "3.0.4",
+      "dev": false,
+      "optional": false
+    },
+    {
+      "name": "msgpackr-extract",
+      "version": "3.0.4",
+      "dev": false,
+      "optional": true
+    },
+    {
+      "name": "sharp",
+      "version": "0.34.5",
+      "dev": false,
+      "optional": true
+    },
+    {
+      "name": "unrs-resolver",
+      "version": "1.12.2",
+      "dev": true,
+      "optional": false
+    },
+    {
+      "name": "utf-8-validate",
+      "version": "5.0.10",
+      "dev": false,
+      "optional": false
+    }
+  ],
+  "advisories": [
+    {
+      "id": "A-01",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-42h9-826w-cgv3",
+      "severity": "moderate",
+      "title": "Axios: Excessive recursion in formDataToJSON can cause denial of service",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-02",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-xj6q-8x83-jv6g",
+      "severity": "moderate",
+      "title": "Axios: Prototype pollution auth subfields can inject Basic auth",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-03",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-pmv8-rq9r-6j72",
+      "severity": "moderate",
+      "title": "Axios: Deep formToJSON Key Recursion Can Cause Denial of Service",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-04",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-jqh4-m9w3-8hp9",
+      "severity": "moderate",
+      "title": "Axios: Fetch adapter `ReadableStream` uploads bypass `maxBodyLength`",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-05",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-mmx7-hfxf-jppx",
+      "severity": "moderate",
+      "title": "Axios: Prototype pollution gadgets can alter axios request construction",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-06",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-f4gw-2p7v-4548",
+      "severity": "moderate",
+      "title": "Axios: NO_PROXY bypass for 0.0.0.0 local addresses in axios",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-07",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-gcfj-64vw-6mp9",
+      "severity": "high",
+      "title": "Axios Node HTTP adapter can use an inherited proxy after interceptor config cloning",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-08",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-hcpx-6fm6-wx23",
+      "severity": "moderate",
+      "title": "Axios form serializer maxDepth bypass via {} metatoken",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-09",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-7q8q-rj6j-mhjq",
+      "severity": "moderate",
+      "title": "Axios: Nested axios option objects can consume polluted prototype values",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-10",
+      "package": "axios",
+      "url": "https://github.com/advisories/GHSA-mwf2-3pr3-8698",
+      "severity": "moderate",
+      "title": "Axios: HTTP/2 streamed uploads bypass `maxBodyLength`",
+      "verdict": "Not reachable. axios arrives under @wagmi/connectors → @base-org/account → @coinbase/cdp-sdk, a connector this app does not offer. `@base-org/account` is aliased to an empty stub in next.config.ts, and `axios` appears in 0 of 225 shipped chunks — with the grep proven by `coinbase` at 26, which is the connector code that does ship."
+    },
+    {
+      "id": "A-11",
+      "package": "brace-expansion",
+      "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+      "severity": "high",
+      "title": "brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash",
+      "verdict": "Not reachable. It arrives under eslint-config-next → typescript-eslint → minimatch, so it is a lint-time dependency and absent from the production tree. Nothing a user loads has run it, and it appears in 0 of 225 shipped chunks."
+    },
+    {
+      "id": "A-12",
+      "package": "next",
+      "url": "https://github.com/advisories/GHSA-6gpp-xcg3-4w24",
+      "severity": "high",
+      "title": "Next.js: Middleware / Proxy bypass in App Router applications using Turbopack and single locale",
+      "verdict": "Not reachable. Every Next.js advisory in this tree needs a running Next server: middleware, Server Actions, rewrites, the response cache, the Image Optimization API, or Server Function endpoints. `output: \"export\"` means no Next server exists in production — the deploy is static files under a web root, served by Caddy. Proven in the tree, not assumed: no middleware.ts, zero `\"use server\"`, zero route handlers."
+    },
+    {
+      "id": "A-13",
+      "package": "next",
+      "url": "https://github.com/advisories/GHSA-m99w-x7hq-7vfj",
+      "severity": "high",
+      "title": "Next.js: Denial of Service in App Router using Server Actions",
+      "verdict": "Not reachable. Every Next.js advisory in this tree needs a running Next server: middleware, Server Actions, rewrites, the response cache, the Image Optimization API, or Server Function endpoints. `output: \"export\"` means no Next server exists in production — the deploy is static files under a web root, served by Caddy. Proven in the tree, not assumed: no middleware.ts, zero `\"use server\"`, zero route handlers."
+    },
+    {
+      "id": "A-14",
+      "package": "next",
+      "url": "https://github.com/advisories/GHSA-89xv-2m56-2m9x",
+      "severity": "high",
+      "title": "Next.js: Server-Side Request Forgery in Server Actions on custom servers",
+      "verdict": "Not reachable. Every Next.js advisory in this tree needs a running Next server: middleware, Server Actions, rewrites, the response cache, the Image Optimization API, or Server Function endpoints. `output: \"export\"` means no Next server exists in production — the deploy is static files under a web root, served by Caddy. Proven in the tree, not assumed: no middleware.ts, zero `\"use server\"`, zero route handlers."
+    },
+    {
+      "id": "A-15",
+      "package": "next",
+      "url": "https://github.com/advisories/GHSA-68g3-v927-f742",
+      "severity": "moderate",
+      "title": "Next.js: Cache confusion of response bodies for requests with bodies",
+      "verdict": "Not reachable. Every Next.js advisory in this tree needs a running Next server: middleware, Server Actions, rewrites, the response cache, the Image Optimization API, or Server Function endpoints. `output: \"export\"` means no Next server exists in production — the deploy is static files under a web root, served by Caddy. Proven in the tree, not assumed: no middleware.ts, zero `\"use server\"`, zero route handlers."
+    },
+    {
+      "id": "A-16",
+      "package": "next",
+      "url": "https://github.com/advisories/GHSA-4633-3j49-mh5q",
+      "severity": "moderate",
+      "title": "Next.js: Cache confusion of response bodies for requests with bodies containing invalid UTF-8 byte sequences",
+      "verdict": "Not reachable. Every Next.js advisory in this tree needs a running Next server: middleware, Server Actions, rewrites, the response cache, the Image Optimization API, or Server Function endpoints. `output: \"export\"` means no Next server exists in production — the deploy is static files under a web root, served by Caddy. Proven in the tree, not assumed: no middleware.ts, zero `\"use server\"`, zero route handlers."
+    },
+    {
+      "id": "A-17",
+      "package": "next",
+      "url": "https://github.com/advisories/GHSA-4c39-4ccg-62r3",
+      "severity": "moderate",
+      "title": "Next.js: Unbounded Server Action payload in Edge runtime",
+      "verdict": "Not reachable. Every Next.js advisory in this tree needs a running Next server: middleware, Server Actions, rewrites, the response cache, the Image Optimization API, or Server Function endpoints. `output: \"export\"` means no Next server exists in production — the deploy is static files under a web root, served by Caddy. Proven in the tree, not assumed: no middleware.ts, zero `\"use server\"`, zero route handlers."
+    },
+    {
+      "id": "A-18",
+      "package": "next",
+      "url": "https://github.com/advisories/GHSA-p9j2-gv94-2wf4",
+      "severity": "high",
+      "title": "Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostname",
+      "verdict": "Not reachable. Every Next.js advisory in this tree needs a running Next server: middleware, Server Actions, rewrites, the response cache, the Image Optimization API, or Server Function endpoints. `output: \"export\"` means no Next server exists in production — the deploy is static files under a web root, served by Caddy. Proven in the tree, not assumed: no middleware.ts, zero `\"use server\"`, zero route handlers."
+    },
+    {
+      "id": "A-19",
+      "package": "next",
+      "url": "https://github.com/advisories/GHSA-q8wf-6r8g-63ch",
+      "severity": "moderate",
+      "title": "Next.js: Denial of Service in the Image Optimization API using SVGs",
+      "verdict": "Not reachable. Every Next.js advisory in this tree needs a running Next server: middleware, Server Actions, rewrites, the response cache, the Image Optimization API, or Server Function endpoints. `output: \"export\"` means no Next server exists in production — the deploy is static files under a web root, served by Caddy. Proven in the tree, not assumed: no middleware.ts, zero `\"use server\"`, zero route handlers."
+    },
+    {
+      "id": "A-20",
+      "package": "next",
+      "url": "https://github.com/advisories/GHSA-955p-x3mx-jcvp",
+      "severity": "moderate",
+      "title": "Next.js: Unauthenticated disclosure of internal Server Function endpoints",
+      "verdict": "Not reachable. Every Next.js advisory in this tree needs a running Next server: middleware, Server Actions, rewrites, the response cache, the Image Optimization API, or Server Function endpoints. `output: \"export\"` means no Next server exists in production — the deploy is static files under a web root, served by Caddy. Proven in the tree, not assumed: no middleware.ts, zero `\"use server\"`, zero route handlers."
+    },
+    {
+      "id": "A-21",
+      "package": "postcss",
+      "url": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93",
+      "severity": "moderate",
+      "title": "PostCSS has XSS via Unescaped </style> in its CSS Stringify Output",
+      "verdict": "Not reachable. postcss transforms CSS at build time, from Tailwind and from next. Both advisories need attacker-controlled CSS — a hostile `sourceMappingURL` comment, or unescaped `</style>` in stringify output — and the CSS here is ours. `postcss` appears in 0 of 225 shipped chunks."
+    },
+    {
+      "id": "A-22",
+      "package": "postcss",
+      "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q",
+      "severity": "high",
+      "title": "PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments",
+      "verdict": "Not reachable. postcss transforms CSS at build time, from Tailwind and from next. Both advisories need attacker-controlled CSS — a hostile `sourceMappingURL` comment, or unescaped `</style>` in stringify output — and the CSS here is ours. `postcss` appears in 0 of 225 shipped chunks."
+    },
+    {
+      "id": "A-23",
+      "package": "postcss",
+      "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849",
+      "severity": "high",
+      "title": "PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure",
+      "verdict": "Not reachable. postcss transforms CSS at build time, from Tailwind and from next. Both advisories need attacker-controlled CSS — a hostile `sourceMappingURL` comment, or unescaped `</style>` in stringify output — and the CSS here is ours. `postcss` appears in 0 of 225 shipped chunks."
+    },
+    {
+      "id": "A-24",
+      "package": "sharp",
+      "url": "https://github.com/advisories/GHSA-f88m-g3jw-g9cj",
+      "severity": "high",
+      "title": "sharp inherited vulnerabilities in libvips: CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591",
+      "verdict": "Not reachable. sharp is next's image optimizer and the advisory is inherited libvips CVEs. `images: { unoptimized: true }` plus zero `next/image` imports means it is never invoked, and it is a Node native module that cannot enter a browser bundle at all. `libvips` appears in 0 of 225 shipped chunks."
+    },
+    {
+      "id": "A-25",
+      "package": "uuid",
+      "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+      "severity": "moderate",
+      "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+      "verdict": "Not reachable. The advisory needs v3, v5 or v6 called with a `buf` argument. uuid does ship, under wagmi → @metamask/utils, but that consumer calls `v4()` and nothing else, and the DNS/URL namespace constants that v3 and v5 require appear in 0 of 225 chunks."
+    },
+    {
+      "id": "A-26",
+      "package": "ws",
+      "url": "https://github.com/advisories/GHSA-58qx-3vcg-4xpx",
+      "severity": "moderate",
+      "title": "ws: Uninitialized memory disclosure",
+      "verdict": "Not reachable. ws is viem's Node WebSocket implementation, reached through isows, which resolves to the browser's native WebSocket in a browser build. This app talks to the chain over HTTP RPC and opens no socket: `new WebSocket` appears in 0 of 225 shipped chunks."
+    },
+    {
+      "id": "A-27",
+      "package": "ws",
+      "url": "https://github.com/advisories/GHSA-96hv-2xvq-fx4p",
+      "severity": "high",
+      "title": "ws: Memory exhaustion DoS from tiny fragments and data chunks",
+      "verdict": "Not reachable. ws is viem's Node WebSocket implementation, reached through isows, which resolves to the browser's native WebSocket in a browser build. This app talks to the chain over HTTP RPC and opens no socket: `new WebSocket` appears in 0 of 225 shipped chunks."
+    }
+  ],
+  "twinSha": "2526a83db8eee2f2ae7cd0874e5cfcb2de24503e4b15363acf9633574afde9b7"
+}

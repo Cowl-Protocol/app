@@ -48,3 +48,24 @@ jobs:
       # step that catches a broken worker bundle, which typechecking cannot see
       # and which breaks proving for everyone the moment it ships.
       - run: npm run build
+
+  supplychain:
+    name: dependency gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+      # No `npm ci`, deliberately. The install-script half reads package-lock.json
+      # and nothing else, and installing the tree in order to check whether the
+      # tree is safe to install would run the very scripts this is here to notice.
+      #
+      # This tree has eight of them, against the cli's two, and none of them
+      # reach a user — a static export ships no Node. They run here, on the
+      # machine that turns 900-odd packages into the bundle every browser runs,
+      # which is the shortest path in this project from a bad package to
+      # somebody's money.
+      - run: node audits/supplychain/check.mjs

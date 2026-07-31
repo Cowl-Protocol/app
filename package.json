@@ -8,7 +8,7 @@
     "build": "node scripts/envcheck.mjs && node scripts/build-worker.mjs && next build",
     "start": "next start -p 3001",
     "typecheck": "tsc --noEmit",
-    "test:offline": "tsx scripts/capcheck.mts && tsx scripts/mergecheck.mts && tsx scripts/qrcheck.mts && tsx scripts/retrycheck.mts && tsx scripts/synccheck.mts && tsx scripts/maxcheck.mts",
+    "test:offline": "tsx scripts/capcheck.mts && tsx scripts/mergecheck.mts && tsx scripts/qrcheck.mts && tsx scripts/retrycheck.mts && tsx scripts/synccheck.mts && tsx scripts/maxcheck.mts && tsx scripts/transportcheck.mts",
     "test:supplychain": "node audits/supplychain/check.mjs",
     "lint": "eslint"
   },

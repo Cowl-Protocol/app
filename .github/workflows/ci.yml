@@ -9,7 +9,9 @@ name: CI
 # written after a retry re-sent eight deposits that had already landed, the rule
 # that a balance refresh stops waiting and says so, written after every endpoint
 # serving this chain's history refused at once and the spinner never stopped,
-# and the rule that the way out never offers an amount two notes cannot carry.
+# the rule that the way out never offers an amount two notes cannot carry, and
+# the rule that a throttled endpoint falls through to the next one instead of
+# stopping the chain, which cost minutes per operation when it did not.
 # They need no network and finish in under a second each.
 #
 # The rest are left out on purpose, and the reasons differ:

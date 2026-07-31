@@ -1,15 +1,14 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { createPublicClient, formatUnits } from "viem";
+import { formatUnits } from "viem";
 import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { activeNetwork, toViemChain } from "./networks";
-import { transportFor } from "./transport";
+import { activeNetwork } from "./networks";
+import { publicClient } from "./rpc";
 import type { Token } from "./tokens";
 
 const net = activeNetwork();
-const chain = toViemChain(net);
 
 const ERC20_BALANCE_ABI = [
   {
@@ -21,14 +20,9 @@ const ERC20_BALANCE_ABI = [
   },
 ] as const;
 
-/** Read-only client used for balances, independent of any wallet. */
-export const publicClient = createPublicClient({
-  chain,
-  transport: transportFor(net),
-  // Concurrent contract reads collapse into a single multicall, so a page of
-  // balances costs one request rather than one per token.
-  batch: { multicall: { wait: 24 } },
-});
+/* Re-exported so the many modules that already import it from here keep working. It is
+   defined in ./rpc, which carries no React, so read-only code can run outside a browser. */
+export { publicClient };
 
 /**
  * Balance of `owner` for a token, in base units.

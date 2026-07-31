@@ -119,7 +119,7 @@ export const DEFAULT_NETWORK = "robinhood-mainnet";
 
 const STORE_KEY = "cowl.network";
 
-/** The network the app runs against. Persisted per browser; testnet by default. */
+/** The network the app runs against. Persisted per browser; mainnet by default. */
 export function activeNetwork(): NetworkDef {
   if (typeof window !== "undefined") {
     try {
@@ -128,7 +128,17 @@ export function activeNetwork(): NetworkDef {
     } catch {
       /* storage blocked, fall through to the default */
     }
+    return NETWORKS[DEFAULT_NETWORK];
   }
+
+  /* Off the browser there is no localStorage to read, so a Node harness had no way to
+     aim these modules at anything but the default. That made the app's own read path
+     impossible to exercise against testnet without reimplementing it, which defeats the
+     point of testing it. Consulted only when there is no window, so nothing a user sees
+     changes: in the browser the stored choice still wins and this branch never runs. */
+  const fromEnv = process.env.NEXT_PUBLIC_NETWORK;
+  if (fromEnv && NETWORKS[fromEnv]) return NETWORKS[fromEnv];
+
   return NETWORKS[DEFAULT_NETWORK];
 }
 

@@ -192,7 +192,7 @@ await section("cipher interop", async () => {
   const rounds = Math.max(8, Math.min(SAMPLES >> 3, 64));
   const values = [0n, 1n, 10n ** 18n, 2n ** 64n, 2n ** 127n, FR - 1n];
   let cipherBad: string | null = null;
-  let lengths = new Set<number>();
+  const lengths = new Set<number>();
   for (let i = 0; i < rounds + values.length; i++) {
     const value = i < values.length ? values[i]! : randomField();
     const n: Note = { value, token: i % 2 === 0 ? 0n : randomField(), mpk: cliKeys.mpk, blinding: randomField() };

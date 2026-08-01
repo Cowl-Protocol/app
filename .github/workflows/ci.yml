@@ -96,6 +96,14 @@ jobs:
       # the two checkouts.
       - run: npx tsx scripts/crosscheck.mts --offline
         working-directory: app
+      # The other script that imports the CLI. Its first five checks are
+      # properties of this source and the CLI's — that a trade's spend leg binds
+      # the adapter, that value is conserved to the wei, that the legs chain, and
+      # that the wire format is byte-identical across the two clients. Only the
+      # venue and relayer quotes needed a network, and they are what --offline
+      # drops.
+      - run: npx tsx scripts/tradecheck.mts --offline
+        working-directory: app
 
   supplychain:
     name: dependency gate

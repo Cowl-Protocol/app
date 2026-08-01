@@ -27,7 +27,8 @@ agreement is actually worth.
 | 🟢 | The insertion witness holds both walks | the property the circuit's double walk rests on |
 | 🟢 | Signature-derived keys are one account in both clients | address, `mpk`, view key and space all match |
 | 🟢 | The checks can fail | 4 mutations, 4 caught |
-| 🟢 | Runs on every push | new `parity` job, both repositories checked out |
+| 🟢 | The trade plan agrees too | 20 offline checks in `tradecheck`, including byte-identical wire format across the two clients |
+| 🟢 | Runs on every push | new `parity` job, both repositories checked out, both scripts |
 | 🟡 | Independence varies by module | stated per module below rather than implied |
 
 **No 🔴.**
@@ -36,6 +37,9 @@ agreement is actually worth.
 npx tsx scripts/crosscheck.mts --offline    # parity only, ~4s, what CI runs
 npx tsx scripts/crosscheck.mts              # adds the mainnet replay and a real proof
 CROSSCHECK_SAMPLES=4096 npx tsx scripts/crosscheck.mts --offline
+
+npx tsx scripts/tradecheck.mts --offline    # the trade plan and its wire format
+npx tsx scripts/tradecheck.mts              # adds the live venue and relayer quotes
 ```
 
 ## What an agreement is worth, per module
@@ -140,10 +144,18 @@ moves first is the side that broke it, and finding out on a push is the whole
 point. Pinning the CLI to a fixed commit would keep this green while the app
 built witnesses the live pool rejects.
 
-The two halves left out of CI stay out, for reasons that have not changed: the
-mainnet replay reads the chain, so it fails for reasons unrelated to the commit
-under test, and the shield proof loads the WASM backend and takes minutes. Both
-still run in the manual pre-release pass.
+**`tradecheck` came in the same way, and it is worth saying why it took a second
+look.** This report's first version listed it as still excluded "because it also
+needs a venue", which was repeating the reason rather than checking it. Five of
+its seven sections need nothing: the spend leg binding the adapter, value
+conservation to the wei, the legs chaining, byte-identical wire format against
+the CLI, and the executor's promises pinned in source. Only the venue and relayer
+quotes reach a network. Twenty checks now run on every push that never did.
+
+The halves left out stay out, for reasons that have not changed: the mainnet
+replay and the venue quotes read live state, so they fail for reasons unrelated
+to the commit under test, and the shield proof loads the WASM backend and takes
+minutes. All of them still run in the manual pre-release pass.
 
 ## Not covered
 
@@ -151,9 +163,9 @@ still run in the manual pre-release pass.
   shield proof comes back with six public inputs and a plausible length. It does
   not verify that proof against the on-chain verifier, which is where a real
   end-to-end parity claim would end.
-- **`tradecheck` still imports the CLI and is still out of CI.** The same
-  two-checkout job would carry it; it was left alone because it also needs a
-  venue.
+- **The proof is still only checked for shape**, and `sendcheck` — the other
+  script that builds one — is still out of CI for the same reason: minutes and a
+  52MB download.
 - **Nothing sweeps `pool.ts` or `sync.ts`.** Scanning, note selection and merge
   rounds are checked by the app's own offline suite against its own expectations,
   not against the CLI's.

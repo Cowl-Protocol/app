@@ -14,6 +14,15 @@
 //   7. the live relayer prices it    a trade fee is sized above a spend fee
 //
 // Signs nothing and moves nothing; the live half reads free eth_calls.
+//
+//   npx tsx scripts/tradecheck.mts              everything
+//   npx tsx scripts/tradecheck.mts --offline    1 to 5 only: no venue, no relayer
+//
+// Checks 1 to 5 are properties of this source and the CLI's, and they are the
+// ones that catch a trade built wrong. 6 and 7 read a live venue and a live
+// relayer, so they fail for reasons that have nothing to do with the commit
+// under test — which is the whole reason this file had never been in CI.
+// --offline is the half that can be.
 import { readFileSync } from "node:fs";
 import { fieldToHex, hexToField, randomField } from "../lib/shielded/field";
 import { commitment, type Note } from "../lib/shielded/note";
@@ -33,6 +42,8 @@ import { tradeInputFor } from "../lib/trade";
 import { NETWORKS } from "../lib/networks";
 import { encodeTrade as cliEncodeTrade } from "../../cli/src/relayer/client";
 import type { TradeSubmission as CliTradeSubmission } from "../../cli/src/shielded/contract";
+
+const OFFLINE = process.argv.includes("--offline");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -157,7 +168,7 @@ check(
 }
 
 // ---- the live venue ---------------------------------------------------------
-try {
+if (!OFFLINE) try {
   const inLeg = venueLeg(mainnet, 0n);
   const outLeg = venueLeg(mainnet, USDG);
   const buy = await quoteExactOutput(mainnet, inLeg, outLeg, 10n ** 5n); // 0.1 USDG out
@@ -204,7 +215,7 @@ try {
 }
 
 // ---- the live relayer -------------------------------------------------------
-try {
+if (!OFFLINE) try {
   const spendQ = await fetchQuote(mainnet.defaultRelay!);
   const tradeQ = await fetchQuote(mainnet.defaultRelay!, undefined, "trade");
   check(
@@ -216,5 +227,9 @@ try {
   check("the live relayer quotes a trade", false, (e as Error).message.split("\n")[0]);
 }
 
-console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
+console.log(
+  failures === 0
+    ? `\nALL CHECKS PASSED${OFFLINE ? " (offline: no venue, no relayer)" : ""}`
+    : `\n${failures} CHECK(S) FAILED`,
+);
 process.exit(failures === 0 ? 0 : 1);

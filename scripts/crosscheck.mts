@@ -1,23 +1,65 @@
 // Cross-check: the app's browser port of the shielded core must agree with the
 // CLI implementation bit for bit, and with the live mainnet pool. Run with:
-//   npx tsx scripts/crosscheck.ts
+//   npx tsx scripts/crosscheck.mts              everything
+//   npx tsx scripts/crosscheck.mts --offline    parity only: no chain, no prover
 //
-// 1. commitment / nullifier parity      app f(x) === cli f(x)
-// 2. note cipher interop                app encrypt -> cli decrypt, and back
-// 3. packed cipher byte equality        packCipher agrees across ports
-// 4. signature key derivation           deterministic, well-formed, stable
-// 5. live mainnet replay                leaf log rebuilds the chain's root
-// 6. shield proof through the port      witness + bb pipeline produce a proof
+// 1. field, commitment and nullifier parity   app f(x) === cli f(x), swept
+// 2. note cipher interop                      app encrypt -> cli decrypt, and back
+// 3. packed cipher byte equality              packCipher agrees across ports
+// 4. signature key derivation                 deterministic, well-formed, stable
+// 5. Merkle tree parity                       roots, paths, and the insertion walk
+// 6. live mainnet replay                      leaf log rebuilds the chain's root
+// 7. shield proof through the port            witness + bb pipeline produce a proof
+//
+// ---------------------------------------------------------------------------
+// Why the sweeps, and what they are and are not worth
+//
+// Sections 1 to 3 used to draw one random sample each. One sample proves the
+// two ports agree on one point, and the disagreements worth finding do not live
+// at a random point — they live at zero, at one, at the field boundary, and at
+// the carry. So each property is now checked over a fixed set of edge vectors
+// plus CROSSCHECK_SAMPLES random ones, and the count is printed so a run that
+// quietly swept nothing is visible.
+//
+// The strength of a differential test is the independence of the two sides, and
+// that varies by module, so it is stated rather than implied:
+//
+//   crypto    genuinely independent — @noble/ciphers here, node:crypto there.
+//             An agreement is real evidence.
+//   field     shared Poseidon2 primitive, so this checks the wiring around it,
+//             not the hash.
+//   tree      the two files are the same code today. The sweep is a drift
+//             alarm, not a proof, and it earns its place the day somebody edits
+//             one copy — which is exactly how a browser client starts building
+//             witnesses the pool will not accept.
+//
+// Section 5 is new and the tree had no cross-check at all before it. It also
+// asserts the property the circuit's double walk depends on: the append path
+// read at the empty slot reproduces the current root when walked with a zero
+// leaf. If that stops holding, every insertion proof is built against a root
+// the chain does not have.
+//
+// --offline drops the chain replay and the bb proof, which is what makes the
+// rest of this file cheap enough to gate every push in CI.
 import { createPublicClient, defineChain, fallback, http } from "viem";
 
 // App port (browser-clean, runs in node too)
-import { poseidon as appPoseidon, randomField, fieldToHex, hexToField } from "../lib/shielded/field";
+import { poseidon as appPoseidon, randomField, fieldToHex, hexToField, FR } from "../lib/shielded/field";
 import { commitment as appCommitment, nullifier as appNullifier, type Note } from "../lib/shielded/note";
 import { encryptNote as appEncrypt, tryDecryptNote as appDecrypt, packCipher as appPack, unpackCipher as appUnpack } from "../lib/shielded/crypto";
 import { deriveShieldedKeysFromSignature, decodePaymentAddress as appDecodeAddress, SHIELDED_SIGN_MESSAGE } from "../lib/shielded/keys";
-import { computeRoot, appendProof } from "../lib/shielded/tree";
+import {
+  computeRoot as appComputeRoot,
+  appendProof as appAppendProof,
+  merkleProof as appMerkleProof,
+  verifyProof as appVerifyProof,
+  emptyRoot as appEmptyRoot,
+  DEPTH as APP_DEPTH,
+} from "../lib/shielded/tree";
 import { alignPoolToChain, emptyPool, applyScan, emptyWallet, computeBalance } from "../lib/shielded/pool";
-import { proveShield } from "../lib/shielded/prove";
+// proveShield pulls the bb.js WASM backend in with it, which is far too heavy
+// to load for a run that is not going to prove anything. Imported where it is
+// used instead of here.
 
 // CLI implementation (the proven-on-mainnet reference)
 import { poseidon as cliPoseidon } from "../../cli/src/shielded/field.js";
@@ -30,6 +72,15 @@ import {
   SHIELDED_SIGN_MESSAGE as CLI_SIGN_MESSAGE,
 } from "../../cli/src/shielded/keys.js";
 
+import {
+  computeRoot as cliComputeRoot,
+  appendProof as cliAppendProof,
+  merkleProof as cliMerkleProof,
+  verifyProof as cliVerifyProof,
+  emptyRoot as cliEmptyRoot,
+  DEPTH as CLI_DEPTH,
+} from "../../cli/src/shielded/tree.js";
+
 import { privateKeyToAccount } from "viem/accounts";
 
 let failures = 0;
@@ -38,19 +89,74 @@ function check(name: string, ok: boolean, detail = "") {
   if (!ok) failures++;
 }
 
-// ---- 1. field + note math parity -------------------------------------------
-{
-  const a = randomField(), b = randomField(), c = randomField(), d = randomField();
-  check("poseidon arity 2 parity", appPoseidon([a, b]) === cliPoseidon([a, b]));
-  check("poseidon arity 4 parity", appPoseidon([a, b, c, d]) === cliPoseidon([a, b, c, d]));
-
-  const note: Note = { value: 123456789n, token: 0n, mpk: a, blinding: b };
-  check("commitment parity", appCommitment(note) === cliCommitment(note));
-  check("nullifier parity", appNullifier(c, 7) === cliNullifier(c, 7));
+/** Runs one section and keeps a throw inside it.
+ *
+ *  Every block below used to sit at the top level, so the first exception
+ *  anywhere ended the run and every check after it went unreported — which is
+ *  the wrong shape for something gating a push. A malformed cipher would hide a
+ *  tree divergence, and the log would look like the tree was never in doubt.
+ *  A section that throws is a failure, named, and the rest still run. */
+async function section(name: string, body: () => Promise<void> | void) {
+  try {
+    await body();
+  } catch (e) {
+    check(`${name} — section threw`, false, e instanceof Error ? e.message : String(e));
+  }
 }
 
+const OFFLINE = process.argv.includes("--offline");
+const SAMPLES = Number(process.env.CROSSCHECK_SAMPLES ?? 256);
+if (!Number.isFinite(SAMPLES) || SAMPLES < 1) {
+  console.error("CROSSCHECK_SAMPLES must be a positive number.");
+  process.exit(2);
+}
+
+/** The values a random draw never produces, and where ports drift apart:
+ *  zero, one, the top of the field, and the limb boundaries either side of the
+ *  128-bit split every packed encoding in this protocol uses. */
+const EDGE = [0n, 1n, 2n, FR - 1n, FR - 2n, 2n ** 128n - 1n, 2n ** 128n, 2n ** 252n];
+
+/** Runs `f` over every edge value and `SAMPLES` random ones, and reports the
+ *  first disagreement rather than only that there was one. A sweep that says
+ *  "failed" without saying on what is a sweep somebody has to rerun by hand. */
+function sweep(name: string, f: (x: bigint, y: bigint) => boolean) {
+  const vectors: [bigint, bigint][] = [];
+  for (const a of EDGE) for (const b of EDGE) vectors.push([a, b]);
+  for (let i = 0; i < SAMPLES; i++) vectors.push([randomField(), randomField()]);
+  let bad: [bigint, bigint] | null = null;
+  for (const [a, b] of vectors) {
+    if (!f(a, b)) {
+      bad = [a, b];
+      break;
+    }
+  }
+  check(name, bad === null, bad ? `disagreed at (${bad[0]}, ${bad[1]})` : `${vectors.length} vectors`);
+}
+
+// ---- 1. field + note math parity -------------------------------------------
+await section("field and note math", async () => {
+  sweep("poseidon arity 2 parity", (a, b) => appPoseidon([a, b]) === cliPoseidon([a, b]));
+  sweep("poseidon arity 4 parity", (a, b) => appPoseidon([a, b, a, b]) === cliPoseidon([a, b, a, b]));
+
+  // Both sides build the same note and must agree on what it commits to. value
+  // and blinding take the edge values in turn, which is where a port that
+  // reduces mod FR in a different order shows up.
+  sweep("commitment parity", (a, b) => {
+    const note: Note = { value: a, token: 0n, mpk: b, blinding: a };
+    return appCommitment(note) === cliCommitment(note);
+  });
+
+  // The leaf index is a small integer beside a field element, and the two ports
+  // pack that pair themselves. Indices are swept over the whole tree's range
+  // rather than over field values, because that is the range one can hold.
+  sweep("nullifier parity", (a, b) => {
+    const idx = Number(b % BigInt(2 ** 20));
+    return appNullifier(a, idx) === cliNullifier(a, idx);
+  });
+});
+
 // ---- 2 + 3. cipher interop ---------------------------------------------------
-{
+await section("cipher interop", async () => {
   // A view keypair made by the CLI derivation; the app must be able to encrypt
   // to it and the CLI must read what the app wrote, and the other way around.
   const cliKeys = cliDeriveKeys("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
@@ -73,10 +179,125 @@ function check(name: string, ok: boolean, detail = "") {
   check("packCipher byte equality", appPack(fromApp) === cliPack(fromApp));
   const repacked = appPack(appUnpack(appPack(fromCli)));
   check("pack/unpack roundtrip", repacked === appPack(fromCli));
-}
+
+  // The one place in this file where agreement is real evidence rather than a
+  // drift alarm: @noble/ciphers on this side, node:crypto on the other. AES-GCM
+  // is deterministic in (key, iv, plaintext), so the two must produce the same
+  // bytes for the same note — and each must read what the other wrote.
+  //
+  // Values are swept because the payload encodes a bigint, and an encoding that
+  // is a byte shorter for a smaller number would leak the amount through the
+  // ciphertext length. That bug has a comment in crypto.ts already; this is the
+  // check that would catch it coming back.
+  const rounds = Math.max(8, Math.min(SAMPLES >> 3, 64));
+  const values = [0n, 1n, 10n ** 18n, 2n ** 64n, 2n ** 127n, FR - 1n];
+  let cipherBad: string | null = null;
+  let lengths = new Set<number>();
+  for (let i = 0; i < rounds + values.length; i++) {
+    const value = i < values.length ? values[i]! : randomField();
+    const n: Note = { value, token: i % 2 === 0 ? 0n : randomField(), mpk: cliKeys.mpk, blinding: randomField() };
+    const a = appEncrypt(n, cliKeys.viewPubHex);
+    const readByCli = cliDecrypt(a, cliKeys.viewPriv);
+    const b = cliEncrypt(n, cliKeys.viewPubHex);
+    const readByApp = appDecrypt(b, cliKeys.viewPriv);
+    lengths.add(appPack(a).length);
+    const same = (r: Note | null) => !!r && r.value === n.value && r.token === n.token && r.blinding === n.blinding;
+    if (!same(readByCli) || !same(readByApp)) {
+      cipherBad = `value ${value}`;
+      break;
+    }
+  }
+  check("cipher interop swept both ways", cipherBad === null, cipherBad ?? `${rounds + values.length} notes`);
+  check(
+    "packed cipher length is constant",
+    lengths.size === 1,
+    lengths.size === 1 ? `${[...lengths][0]} chars for every value` : `${lengths.size} distinct lengths — the amount leaks`,
+  );
+});
+
+// ---- 5. Merkle tree parity ---------------------------------------------------
+// The tree had no cross-check at all before this. It is the accumulator every
+// spend proves membership under, and the app builds its own witnesses from its
+// own copy of it.
+await section("merkle tree", async () => {
+  check("both ports agree on tree depth", APP_DEPTH === CLI_DEPTH, `depth ${APP_DEPTH}`);
+  check("empty root parity", appEmptyRoot() === cliEmptyRoot());
+
+  // Sizes that straddle every shape the level walk can take: empty, a lone
+  // leaf, exact powers of two, and the odd counts that force the zero-sibling
+  // branch at more than one level.
+  const SIZES = [0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 33];
+  let rootBad: number | null = null;
+  let pathBad: number | null = null;
+  let appendBad: string | null = null;
+
+  for (const size of SIZES) {
+    const leaves = Array.from({ length: size }, () => randomField());
+    if (appComputeRoot(leaves) !== cliComputeRoot(leaves)) {
+      rootBad ??= size;
+      continue;
+    }
+    if (size === 0) continue;
+
+    // Every position, not a sampled one: the sibling that is a zero subtree
+    // only appears at particular indices, and those are the interesting ones.
+    for (let i = 0; i < size; i++) {
+      const a = appMerkleProof(leaves, i);
+      const c = cliMerkleProof(leaves, i);
+      const identical =
+        a.root === c.root &&
+        a.leaf === c.leaf &&
+        a.pathElements.length === c.pathElements.length &&
+        a.pathElements.every((e, d) => e === c.pathElements[d]) &&
+        a.pathIndices.every((e, d) => e === c.pathIndices[d]);
+      // Each port must also accept the other's path, which is the property a
+      // shared root actually rests on.
+      if (!identical || !cliVerifyProof(a) || !appVerifyProof(c)) {
+        pathBad ??= size * 1000 + i;
+        break;
+      }
+    }
+
+    const leaf = randomField();
+    const a = appAppendProof(leaves, leaf);
+    const c = cliAppendProof(leaves, leaf);
+    const sameAppend =
+      a.oldRoot === c.oldRoot &&
+      a.newRoot === c.newRoot &&
+      a.leafIndex === c.leafIndex &&
+      a.pathElements.every((e, d) => e === c.pathElements[d]) &&
+      a.right.every((e, d) => e === c.right[d]);
+    if (!sameAppend) appendBad ??= `parity at ${size}`;
+
+    // The property the circuit's double walk rests on: the path is read at the
+    // empty slot, so walking it with a zero leaf must reproduce the root the
+    // chain holds right now, and with the real leaf must produce the root it
+    // moves to. If this stops holding, every insertion proof is built against a
+    // root the pool does not have and the transaction reverts — or worse, does
+    // not.
+    const asProof = (l: bigint, root: bigint) => ({
+      root,
+      leaf: l,
+      pathElements: a.pathElements,
+      pathIndices: a.right.map((r) => (r ? 1 : 0)),
+    });
+    if (!appVerifyProof(asProof(0n, a.oldRoot))) appendBad ??= `empty walk at ${size}`;
+    if (!appVerifyProof(asProof(leaf, a.newRoot))) appendBad ??= `insert walk at ${size}`;
+    if (a.oldRoot !== appComputeRoot(leaves)) appendBad ??= `oldRoot at ${size}`;
+    if (a.newRoot !== appComputeRoot([...leaves, leaf])) appendBad ??= `newRoot at ${size}`;
+  }
+
+  check("root parity across tree shapes", rootBad === null, rootBad === null ? `${SIZES.length} sizes` : `size ${rootBad}`);
+  check(
+    "merkle paths identical and cross-verified",
+    pathBad === null,
+    pathBad === null ? "every index of every size" : `size ${Math.floor(pathBad / 1000)} index ${pathBad % 1000}`,
+  );
+  check("insertion witness holds both walks", appendBad === null, appendBad ?? `${SIZES.length} sizes`);
+});
 
 // ---- 4. signature-derived keys ----------------------------------------------
-{
+await section("signature-derived keys", async () => {
   const acct = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
   const sig1 = await acct.signMessage({ message: SHIELDED_SIGN_MESSAGE });
   const sig2 = await acct.signMessage({ message: SHIELDED_SIGN_MESSAGE });
@@ -120,15 +341,18 @@ function check(name: string, ok: boolean, detail = "") {
   const pool = emptyPool();
   pool.commitments.push(fieldToHex(appCommitment(note)));
   pool.ciphertexts.push(appEncrypt(note, k1.viewPubHex));
-  pool.root = fieldToHex(computeRoot(pool.commitments.map(hexToField)));
+  pool.root = fieldToHex(appComputeRoot(pool.commitments.map(hexToField)));
   const wallet = emptyWallet();
   const { discovered } = applyScan(pool, wallet, k1);
   const bal = computeBalance(wallet);
   check("scan discovers own note", discovered === 1 && bal.length === 1 && bal[0]!.amount === note.value);
-}
+});
 
-// ---- 5. live mainnet replay --------------------------------------------------
-{
+// ---- 6. live mainnet replay --------------------------------------------------
+// Skipped under --offline: it reads the chain, so it fails for reasons that
+// have nothing to do with the commit under test, and a gate that goes red on an
+// RPC outage is a gate people learn to rerun rather than read.
+if (!OFFLINE) await section("mainnet replay", async () => {
   const POOL = "0x6f98666e9d05431dCd765AAa289a5E346AfA6a3E" as const;
   const DEPLOY = 18121312n;
   const chain = defineChain({
@@ -187,17 +411,20 @@ function check(name: string, ok: boolean, detail = "") {
     `${pool.commitments.length} leaves, root ${pool.root.slice(0, 14)}…`,
   );
   check("mainnet ciphers parse (158 bytes)", pool.ciphertexts.every((c, i) => c !== null || leaves[i]?.cipher === undefined));
-}
+});
 
-// ---- 6. a shield proof through the ported pipeline --------------------------
-{
+// ---- 7. a shield proof through the ported pipeline --------------------------
+// Skipped under --offline: it loads the bb.js WASM backend and proves, which is
+// minutes rather than seconds.
+if (!OFFLINE) await section("shield proof", async () => {
   const keys = deriveShieldedKeysFromSignature("0x" + "11".repeat(65));
   const note: Note = { value: 10n ** 15n, token: 0n, mpk: keys.mpk, blinding: randomField() };
   const c = appCommitment(note);
   // A synthetic three-leaf tree stands in for the pool; the shape of the
   // witness is identical at any size.
   const leaves = [randomField(), randomField(), randomField()];
-  const at = appendProof(leaves, c);
+  const at = appAppendProof(leaves, c);
+  const { proveShield } = await import("../lib/shielded/prove");
   const t0 = Date.now();
   const proof = await proveShield(note, c, at, { threads: 4 });
   check(
@@ -205,7 +432,11 @@ function check(name: string, ok: boolean, detail = "") {
     proof.publicInputs.length === 6 && proof.proof.length > 2,
     `${(proof.proof.length - 2) / 2} bytes in ${Date.now() - t0}ms`,
   );
-}
+});
 
-console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
+console.log(
+  failures === 0
+    ? `\nALL CHECKS PASSED${OFFLINE ? " (offline: no chain replay, no proof)" : ""}`
+    : `\n${failures} CHECK(S) FAILED`,
+);
 process.exit(failures === 0 ? 0 : 1);

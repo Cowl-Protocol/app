@@ -17,11 +17,15 @@ name: CI
 #
 # The rest are left out on purpose, and the reasons differ:
 #   assets/holdings/price/rpc/relay/fee  read live chain, relayer or price data
-#   sendcheck, crosscheck                build real proofs, so they pull the
-#                                        52MB CRS and take minutes
-#   crosscheck, tradecheck               import from ../../cli, which does not
+#   sendcheck                            builds real proofs, so it pulls the
+#                                        52MB CRS and takes minutes
+#   tradecheck                           imports from ../../cli, which does not
 #                                        exist in a clone of this repo alone
 # They stay part of the manual pre-release pass. See the app README.
+#
+# crosscheck used to be on both of those lists and is now its own job below.
+# `--offline` drops the chain replay and the proof, and the second reason is
+# answered by checking out both repositories instead of one.
 
 on:
   push:
@@ -54,6 +58,44 @@ jobs:
       # step that catches a broken worker bundle, which typechecking cannot see
       # and which breaks proving for everyone the moment it ships.
       - run: npm run build
+
+  parity:
+    name: agrees with the CLI
+    runs-on: ubuntu-latest
+    # The one job here that reaches outside this repository, and it has to: what
+    # it checks is that this browser port and the CLI compute the same numbers.
+    #
+    # It follows that a change on the CLI's main can turn this red without a
+    # commit here, and that is the correct behaviour rather than a flaw in it.
+    # The two implementations sharing a pool is the invariant; whichever side
+    # moves first is the side that broke it, and finding out on a push is the
+    # entire point of running this at all. The alternative — pinning the CLI to
+    # a commit — would make this green while the app built witnesses the live
+    # pool rejects.
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          path: app
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Cowl-Protocol/cli
+          persist-credentials: false
+          path: cli
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+      # Both trees install: the crosscheck imports the CLI's TypeScript
+      # directly, and those files import their own dependencies.
+      - run: npm ci
+        working-directory: app
+      - run: npm ci
+        working-directory: cli
+      # --offline: no chain, no prover. Field, note, cipher, key and Merkle
+      # parity only, which is seconds rather than minutes and needs nothing but
+      # the two checkouts.
+      - run: npx tsx scripts/crosscheck.mts --offline
+        working-directory: app
 
   supplychain:
     name: dependency gate

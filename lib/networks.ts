@@ -70,7 +70,7 @@ export const NETWORKS: Record<string, NetworkDef> = {
       usdg: "0xa82762eDA1AF5Ed19B9BD544C121dbcF365526aC",
       swapRouter: "0xbd610c3A708C483a64dC2C92876C2D1a8Ef43b03",
       quoter: "0x5cD1F037A2CB277A7661Ad6c045803BFC428f84B",
-      tradeAdapter: "0xD0D74be38C0B99EBa6465e9F512c3F78EE2d1f3B",
+      tradeAdapter: "0xD7839eC2AbBCcADf77995Af633510b1A3Cdc0726",
     },
   },
   "robinhood-mainnet": {
@@ -106,7 +106,7 @@ export const NETWORKS: Record<string, NetworkDef> = {
       cowl: "0xfc7CB8A3Df69c0F658Ac5Fb1e31dE1843E04E38f",
       swapRouter: "0xCaf681a66D020601342297493863E78C959E5cb2",
       quoter: "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7",
-      tradeAdapter: "0x0b86f9d1D2E0Abc8ab7C7BE39498855E8F4a3A98",
+      tradeAdapter: "0x55B0fD7EB8a9c8F54CF52b57961412FDc53fbB7D",
       // The deepest WETH/USDG pool on pons sits at 0.05%.
       feeTier: 500,
     },
@@ -134,10 +134,17 @@ export function activeNetwork(): NetworkDef {
   /* Off the browser there is no localStorage to read, so a Node harness had no way to
      aim these modules at anything but the default. That made the app's own read path
      impossible to exercise against testnet without reimplementing it, which defeats the
-     point of testing it. Consulted only when there is no window, so nothing a user sees
-     changes: in the browser the stored choice still wins and this branch never runs. */
-  const fromEnv = process.env.NEXT_PUBLIC_NETWORK;
-  if (fromEnv && NETWORKS[fromEnv]) return NETWORKS[fromEnv];
+     point of testing it.
+
+     Ignored entirely in a production build. Without that guard this branch also runs
+     during server rendering, so a NEXT_PUBLIC_NETWORK set on the host would render the
+     server on one chain while the browser read another off localStorage, and the two
+     would disagree at hydration. Local tooling gets the affordance; the deployed app
+     cannot be steered by an environment variable at all. */
+  if (process.env.NODE_ENV !== "production") {
+    const fromEnv = process.env.NEXT_PUBLIC_NETWORK;
+    if (fromEnv && NETWORKS[fromEnv]) return NETWORKS[fromEnv];
+  }
 
   return NETWORKS[DEFAULT_NETWORK];
 }

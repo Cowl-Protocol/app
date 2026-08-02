@@ -23,7 +23,7 @@
 // facts underneath were already public — the trade is in the pool's logs and the
 // shield deposit is a plain transaction. What stays genuinely hidden is what the
 // shielded pool hides: balances inside it, and who paid whom.
-import { keccak256, encodePacked, type Address } from "viem";
+import { keccak256, encodePacked, isAddress, type Address } from "viem";
 
 import { publicClient } from "./rpc";
 
@@ -34,7 +34,25 @@ export const EARN_ROOTS_BASE =
   "https://raw.githubusercontent.com/Cowl-Protocol/earn/main/roots";
 
 /** Set once CowlEarn is deployed. Absent means the programme is not wired yet. */
-export const EARN_ADDRESS = process.env.NEXT_PUBLIC_EARN_ADDRESS as Address | undefined;
+const configuredAddress = process.env.NEXT_PUBLIC_EARN_ADDRESS;
+
+/**
+ * Checked rather than trusted, and the checksum is not optional.
+ *
+ * Addresses reach this variable by being copied — out of a deploy log, a broadcast
+ * file, an explorer — and every one of those prints its own casing. viem refuses an
+ * address whose checksum does not match, which is correct and is the point of EIP-55,
+ * but it refuses it deep inside the first call: a bad case here surfaced as "could not
+ * read your share, try again in a moment", which is a suggestion that can never work.
+ *
+ * So the mistake is named here instead, once, where it can say what it actually is.
+ * Normalising it away would be worse than the error: a typo would then silently point
+ * the claim path at a contract nobody meant.
+ */
+export const EARN_ADDRESS: Address | undefined =
+  configuredAddress && isAddress(configuredAddress) ? configuredAddress : undefined;
+
+const EARN_ADDRESS_INVALID = !!configuredAddress && !EARN_ADDRESS;
 
 export const EARN_ABI = [
   { type: "function", name: "root", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
@@ -70,10 +88,17 @@ export type ClaimEntry = {
 export type EarnStatus =
   /** Not deployed, or no root published yet. */
   | { state: "not-live" }
+  /** `NEXT_PUBLIC_EARN_ADDRESS` is set to something that is not an address. Nothing
+   *  about this improves by waiting, so it must not read like a hiccup. */
+  | { state: "misconfigured"; detail: string }
   /** The address has never traded COWL while being a pool user. */
   | { state: "none" }
   /** The published file disagrees with the chain, so no figure here is safe to show. */
   | { state: "stale"; fileRoot: `0x${string}`; chainRoot: `0x${string}` }
+  /** There is no contract at EARN_ADDRESS on the network the app is pointed at. A
+   *  configuration mistake, not a hiccup, and worth saying so: "try again in a moment"
+   *  suggests a fix that will never work. */
+  | { state: "wrong-network"; chainId: number; address: Address }
   | {
       state: "ready";
       /** Everything ever earned, per the active root. */
@@ -112,23 +137,42 @@ async function fetchShard(address: Address): Promise<{ root: `0x${string}`; clai
  * no indexing, no API.
  */
 export async function readEarn(address: Address): Promise<EarnStatus> {
+  if (EARN_ADDRESS_INVALID) {
+    return { state: "misconfigured", detail: `NEXT_PUBLIC_EARN_ADDRESS is not a valid address: ${configuredAddress}` };
+  }
   if (!EARN_ADDRESS) return { state: "not-live" };
 
-  const [chainRoot, claimedCowl, claimedWeth] = await Promise.all([
-    publicClient.readContract({ address: EARN_ADDRESS, abi: EARN_ABI, functionName: "root" }),
-    publicClient.readContract({
-      address: EARN_ADDRESS,
-      abi: EARN_ABI,
-      functionName: "claimedCowl",
-      args: [address],
-    }),
-    publicClient.readContract({
-      address: EARN_ADDRESS,
-      abi: EARN_ABI,
-      functionName: "claimedWeth",
-      args: [address],
-    }),
-  ]);
+  let chainRoot: `0x${string}`;
+  let claimedCowl: bigint;
+  let claimedWeth: bigint;
+  try {
+    [chainRoot, claimedCowl, claimedWeth] = await Promise.all([
+      publicClient.readContract({ address: EARN_ADDRESS, abi: EARN_ABI, functionName: "root" }),
+      publicClient.readContract({
+        address: EARN_ADDRESS,
+        abi: EARN_ABI,
+        functionName: "claimedCowl",
+        args: [address],
+      }),
+      publicClient.readContract({
+        address: EARN_ADDRESS,
+        abi: EARN_ABI,
+        functionName: "claimedWeth",
+        args: [address],
+      }),
+    ]);
+  } catch (err) {
+    /* A read against an address with no code reverts, and the raw failure reads like a
+       network blip. It usually is not: it means the app is pointed at one chain and
+       EARN_ADDRESS lives on another, which is exactly the mistake that costs an hour
+       because the message sends you looking in the wrong place. The extra call only
+       happens on the failure path, so the happy path is unchanged. */
+    const code = await publicClient.getCode({ address: EARN_ADDRESS }).catch(() => undefined);
+    if (!code || code === "0x") {
+      return { state: "wrong-network", chainId: publicClient.chain?.id ?? 0, address: EARN_ADDRESS };
+    }
+    throw err;
+  }
 
   if (!chainRoot || /^0x0+$/.test(chainRoot)) return { state: "not-live" };
 

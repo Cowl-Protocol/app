@@ -20,12 +20,16 @@ import { formatUnits } from "viem";
 import { useWalletClient } from "wagmi";
 
 import { useWallet } from "@/lib/useWallet";
+import { activeNetwork } from "@/lib/networks";
+import { publicClient } from "@/lib/rpc";
 import { readEarn, buildClaim, EARN_ADDRESS, type EarnStatus } from "@/lib/earn";
 import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
 
-// Flips when the fee redirect points at the contract and the first root is live.
-const LIVE = false;
+// Off by default, and off in every deployed build unless the flag is set. An env
+// switch rather than an edited constant, so the whole path can be rehearsed against
+// testnet without a code change that could be forgotten on the way back.
+const LIVE = process.env.NEXT_PUBLIC_EARN_LIVE === "1";
 
 const STEPS = [
   {
@@ -54,6 +58,10 @@ export default function EarnCard() {
   const [status, setStatus] = useState<EarnStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* What the last claim actually paid, kept after the figure above has gone back to
+     zero. Without it a successful claim looks identical to never having claimed: the
+     number empties and nothing says where it went. */
+  const [paid, setPaid] = useState<{ hash: `0x${string}`; cowl: bigint; weth: bigint } | null>(null);
 
   const address = wallet.address;
 
@@ -79,8 +87,19 @@ export default function EarnCard() {
     if (!walletClient || status?.state !== "ready") return;
     setBusy(true);
     setError(null);
+    setPaid(null);
+    // Read before the claim lands, because afterwards the chain says zero — which is the
+    // right answer to "what is owed" and the wrong one to "what did I just get".
+    const paying = { cowl: status.claimableCowl, weth: status.claimableWeth };
     try {
-      await walletClient.writeContract(buildClaim(status));
+      const hash = await walletClient.writeContract(buildClaim(status));
+      // `writeContract` resolves the moment the wallet hands back a hash, which is well
+      // before the chain has done anything with it. Refreshing there re-reads the old
+      // state and paints the figure the user just claimed straight back onto the card —
+      // it reads as a claim that silently did nothing, when in fact it is landing.
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error(`The claim reverted (${hash}).`);
+      setPaid({ hash, ...paying });
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message.split("\n")[0] : "The claim did not go through");
@@ -211,6 +230,27 @@ export default function EarnCard() {
             </button>
           )}
           {error && <p className="text-xs text-center mt-2 text-muted">{error}</p>}
+
+          {/* Paid, and where to go and see it. The transaction is the receipt: the token
+              is not one a wallet will necessarily list, so the link is the honest proof
+              rather than a decoration. */}
+          {paid && (
+            <div className="mt-2 bg-ink2 p-3.5">
+              <p className="label-soft text-acid">Claimed — check your wallet</p>
+              <p className="font-data text-sm text-bone mt-1">
+                {fmt(paid.cowl)} COWL
+                {paid.weth > 0n && <span className="text-muted"> plus {fmt(paid.weth, 6)} ETH</span>}
+              </p>
+              <a
+                href={`${activeNetwork().explorer}/tx/${paid.hash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-data text-xs text-acid hover:text-bone transition-colors break-all mt-1.5 inline-block"
+              >
+                {paid.hash.slice(0, 10)}…{paid.hash.slice(-6)} ↗
+              </a>
+            </div>
+          )}
         </div>
       </div>
 
@@ -236,6 +276,12 @@ function statusLine(status: EarnStatus | null, address: string | null): string {
   if (!status) return "Could not read your share just now. Nothing is lost, try again in a moment.";
 
   switch (status.state) {
+    case "misconfigured":
+      // A build-time mistake, not a chain condition. Saying "try again" here would send
+      // somebody waiting on a page that cannot start working.
+      return status.detail;
+    case "wrong-network":
+      return `No Earn contract at ${status.address.slice(0, 8)}… on chain ${status.chainId}. The app and the contract are on different networks.`;
     case "not-live":
       return "No allocation has been published yet.";
     case "none":

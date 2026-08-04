@@ -22,6 +22,7 @@ import MaskLogo from "./MaskLogo";
 import InfoTip from "./InfoTip";
 import Spinner from "./Spinner";
 import SyncMark from "./SyncMark";
+import SignNotice from "./SignNotice";
 
 type WalletState = ReturnType<typeof useWallet>;
 
@@ -793,20 +794,25 @@ export default function ShieldCard({ wallet }: { wallet: WalletState }) {
             // The step that is actually in the way, as something you can press.
             // This used to be the disabled label, which told someone to unlock
             // while refusing the click that would.
-            <button
-              onClick={unlock}
-              disabled={shielded.status === "unlocking"}
-              className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
-            >
-              {shielded.status === "unlocking" ? (
-                <span className="flex items-center justify-center gap-2">
-                  <Spinner className="h-3 w-3" />
-                  Check your wallet
-                </span>
-              ) : (
-                "Unlock to see what you can withdraw"
-              )}
-            </button>
+            <>
+              <button
+                onClick={unlock}
+                disabled={shielded.status === "unlocking"}
+                className="w-full label-mono text-sm py-4 bg-acid text-ink hover:bg-acid2 transition-colors disabled:opacity-60"
+              >
+                {shielded.status === "unlocking" ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Spinner className="h-3 w-3" />
+                    Check your wallet
+                  </span>
+                ) : (
+                  "Unlock to see what you can withdraw"
+                )}
+              </button>
+              <div className="mt-3">
+                <SignNotice />
+              </div>
+            </>
           ) : overSendable ? (
             <button
               onClick={merge}

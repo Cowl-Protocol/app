@@ -9,6 +9,7 @@ import { tokenAddressForField } from "@/lib/tokens";
 import AssetRow from "@/components/AssetRow";
 import Spinner from "@/components/Spinner";
 import SyncMark from "@/components/SyncMark";
+import SignNotice from "@/components/SignNotice";
 import { useShielded } from "@/components/ShieldedProvider";
 import Header from "@/components/Header";
 import Banner from "@/components/Banner";
@@ -314,6 +315,9 @@ function PrivateCard({ wallet, publicAssets }: { wallet: WalletState; publicAsse
             One wallet signature unlocks your private balance, in this tab only. Your keys are
             built here and nothing touches a server.
           </p>
+          <div className="mt-2.5">
+            <SignNotice />
+          </div>
           <div className="mt-3">
             {wallet.address ? (
               <button
